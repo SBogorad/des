@@ -10,6 +10,7 @@ pub mod export;
 pub mod scenario;
 pub mod statistics;
 pub mod physics;
+pub mod whatif;
 
 pub use network::*;
 pub use entities::*;
