@@ -10,7 +10,13 @@ pub struct ScenarioConfig {
     pub loco_count: usize,
     pub seed: u32,
     pub duration_days: u32,
+    #[serde(default = "default_shift_spread_min")]
+    pub shift_spread_min: u32,
+    #[serde(default)]
+    pub night_shift_ratio: f32,
 }
+
+fn default_shift_spread_min() -> u32 { 30 }
 
 impl Default for ScenarioConfig {
     fn default() -> Self {
@@ -19,6 +25,8 @@ impl Default for ScenarioConfig {
             loco_count: 20,
             seed: 42,
             duration_days: 30,
+            shift_spread_min: 30,
+            night_shift_ratio: 0.3,
         }
     }
 }
@@ -30,6 +38,27 @@ pub struct LocoSeriesDef {
     pub kind: String,
     pub sections: u8,
     pub depot_ids: Vec<String>,
+    pub max_shift_hours: f32,
+    pub acceleration_kmh_per_s: f32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CrewExperience {
+    Junior,
+    Standard,
+    Senior,
+    Master,
+}
+
+impl CrewExperience {
+    pub fn shift_length_range(self) -> (u32, u32) {
+        match self {
+            Self::Junior => (360, 420),
+            Self::Standard => (420, 480),
+            Self::Senior => (480, 540),
+            Self::Master => (480, 600),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +66,44 @@ pub struct Scenario {
     pub crews: Vec<Crew>,
     pub locos: Vec<Locomotive>,
     pub config: ScenarioConfig,
+    pub metadata: ScenarioMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScenarioMetadata {
+    pub total_crews: usize,
+    pub total_locos: usize,
+    pub depots_used: Vec<String>,
+    pub regions_covered: Vec<String>,
+    pub legs_assigned: usize,
+}
+
+fn experience_distribution(prng: &mut Mulberry32, total: usize) -> Vec<CrewExperience> {
+    let junior_pct = 0.15;
+    let senior_pct = 0.20;
+    let master_pct = 0.05;
+
+    let n_junior = (total as f32 * junior_pct) as usize;
+    let n_master = (total as f32 * master_pct) as usize;
+    let n_senior = (total as f32 * senior_pct) as usize;
+    let n_standard = total.saturating_sub(n_junior + n_senior + n_master);
+
+    let mut exps: Vec<CrewExperience> = Vec::with_capacity(total);
+    exps.extend(std::iter::repeat_n(CrewExperience::Junior, n_junior));
+    exps.extend(std::iter::repeat_n(CrewExperience::Standard, n_standard));
+    exps.extend(std::iter::repeat_n(CrewExperience::Senior, n_senior));
+    exps.extend(std::iter::repeat_n(CrewExperience::Master, n_master));
+
+    while exps.len() < total {
+        exps.push(CrewExperience::Standard);
+    }
+
+    let mut rng = Mulberry32::new(prng.range(0.0, u32::MAX as f32) as u32);
+    for i in (1..exps.len()).rev() {
+        let j = rng.range(0.0, (i + 1) as f32) as usize;
+        exps.swap(i, j.min(i));
+    }
+    exps
 }
 
 pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario {
@@ -69,10 +136,22 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
         map
     };
 
+    let mut regions_covered: Vec<String> = network.stations.values()
+        .map(|s| s.region.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    regions_covered.sort();
+
     // Generate crews
     let crews_per_depot = (config.crew_count as f32 / depot_ids.len() as f32).ceil() as usize;
     let mut crews = Vec::new();
     let mut crew_idx = 0;
+    let experiences = experience_distribution(&mut prng, config.crew_count);
+    let is_night = |shift_idx: usize, ratio: f32| {
+        let threshold = (1.0 - ratio) * 100.0;
+        ((shift_idx as f32 * 37.0) % 100.0) > threshold
+    };
 
     for depot_id in &depot_ids {
         let depot_stations = depot_station_map.get(depot_id)
@@ -87,7 +166,11 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
             .unwrap_or_default();
 
         let n = crews_per_depot.min(config.crew_count - crews.len());
-        for _ in 0..n {
+        for i in 0..n {
+            if crew_idx >= config.crew_count { break; }
+            let experience = experiences.get(crew_idx).copied().unwrap_or(CrewExperience::Standard);
+            let (min_shift, max_shift) = experience.shift_length_range();
+
             crew_idx += 1;
             let crew_id = format!("CREW-{:04}", crew_idx);
 
@@ -104,6 +187,14 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
                     crew.current_leg = Some(leg_id.clone());
                     crew.route_segments = leg.segments.clone();
                 }
+            }
+
+            let shift_len = prng.range(min_shift as f32, max_shift as f32) as u32;
+            crew.shift_work_min = shift_len;
+
+            let night = is_night(i, config.night_shift_ratio);
+            if night {
+                crew.night_shifts_in_row = 1;
             }
 
             crews.push(crew);
@@ -147,6 +238,9 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
                 _ => LocoKind::Electric,
             };
 
+            let mileage = prng.range(10000.0, 200000.0);
+            let hours_since = prng.range(0.0, 200.0);
+
             locos.push(Locomotive {
                 id: loco_id,
                 series: series.id.clone(),
@@ -155,8 +249,8 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
                 depot_id: depot_id.clone(),
                 state: LocoState::Available,
                 position: start_station.clone(),
-                mileage_km: 0.0,
-                hours_since_to: 0.0,
+                mileage_km: mileage,
+                hours_since_to: hours_since,
                 failures_total: 0,
             });
         }
@@ -166,6 +260,13 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
         crews,
         locos,
         config,
+        metadata: ScenarioMetadata {
+            total_crews: crew_idx,
+            total_locos: loco_idx,
+            depots_used: depot_ids,
+            regions_covered,
+            legs_assigned: network.legs.len(),
+        },
     }
 }
 
@@ -177,6 +278,8 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             kind: "Electric".into(),
             sections: 2,
             depot_ids: vec!["DEP-01".into(), "DEP-03".into(), "DEP-04".into(), "DEP-10".into()],
+            max_shift_hours: 12.0,
+            acceleration_kmh_per_s: 0.6,
         },
         LocoSeriesDef {
             id: "EL-4K".into(),
@@ -184,6 +287,8 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             kind: "Electric".into(),
             sections: 4,
             depot_ids: vec!["DEP-01".into(), "DEP-07".into()],
+            max_shift_hours: 12.0,
+            acceleration_kmh_per_s: 0.5,
         },
         LocoSeriesDef {
             id: "EP-2K".into(),
@@ -191,6 +296,8 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             kind: "Electric".into(),
             sections: 2,
             depot_ids: vec!["DEP-01".into(), "DEP-04".into()],
+            max_shift_hours: 10.0,
+            acceleration_kmh_per_s: 0.7,
         },
         LocoSeriesDef {
             id: "DL-7H".into(),
@@ -198,6 +305,8 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             kind: "Diesel".into(),
             sections: 1,
             depot_ids: vec!["DEP-02".into(), "DEP-05".into(), "DEP-06".into(), "DEP-08".into()],
+            max_shift_hours: 10.0,
+            acceleration_kmh_per_s: 0.4,
         },
         LocoSeriesDef {
             id: "DL-9H".into(),
@@ -205,6 +314,8 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             kind: "Diesel".into(),
             sections: 1,
             depot_ids: vec!["DEP-05".into(), "DEP-06".into(), "DEP-08".into()],
+            max_shift_hours: 10.0,
+            acceleration_kmh_per_s: 0.35,
         },
         LocoSeriesDef {
             id: "TEP-70".into(),
@@ -212,6 +323,8 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             kind: "Diesel".into(),
             sections: 1,
             depot_ids: vec!["DEP-02".into(), "DEP-04".into()],
+            max_shift_hours: 10.0,
+            acceleration_kmh_per_s: 0.45,
         },
         LocoSeriesDef {
             id: "2TE25A".into(),
@@ -219,6 +332,8 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             kind: "Diesel".into(),
             sections: 2,
             depot_ids: vec!["DEP-05".into(), "DEP-06".into()],
+            max_shift_hours: 12.0,
+            acceleration_kmh_per_s: 0.3,
         },
         LocoSeriesDef {
             id: "DUAL-2K".into(),
@@ -226,6 +341,32 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             kind: "Dual".into(),
             sections: 2,
             depot_ids: vec!["DEP-03".into()],
+            max_shift_hours: 11.0,
+            acceleration_kmh_per_s: 0.5,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_experience_distribution() {
+        let mut prng = Mulberry32::new(42);
+        let exps = experience_distribution(&mut prng, 100);
+        assert_eq!(exps.len(), 100);
+        let juniors = exps.iter().filter(|e| **e == CrewExperience::Junior).count();
+        let masters = exps.iter().filter(|e| **e == CrewExperience::Master).count();
+        assert!(juniors > 10, "Expected ~15 juniors, got {}", juniors);
+        assert!(masters > 0, "Expected ~5 masters, got {}", masters);
+    }
+
+    #[test]
+    fn test_experience_shift_ranges() {
+        let (min, max) = CrewExperience::Junior.shift_length_range();
+        assert!(min < max);
+        let (min_m, _max_m) = CrewExperience::Master.shift_length_range();
+        assert!(min_m >= min, "Master min should be >= Junior min");
+    }
 }

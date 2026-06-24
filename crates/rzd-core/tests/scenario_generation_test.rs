@@ -82,6 +82,7 @@ fn test_generate_scenario_basic() {
         loco_count: 5,
         seed: 42,
         duration_days: 30,
+        ..Default::default()
     };
 
     let scenario = generate_scenario(&network, config);
@@ -98,6 +99,7 @@ fn test_generate_scenario_deterministic() {
         loco_count: 8,
         seed: 42,
         duration_days: 7,
+        ..Default::default()
     };
 
     let s1 = generate_scenario(&network, config.clone());
@@ -124,6 +126,7 @@ fn test_generate_scenario_crews_have_routes() {
         loco_count: 5,
         seed: 42,
         duration_days: 30,
+        ..Default::default()
     };
 
     let scenario = generate_scenario(&network, config);
@@ -143,6 +146,7 @@ fn test_generate_scenario_locos_at_depots() {
         loco_count: 5,
         seed: 42,
         duration_days: 30,
+        ..Default::default()
     };
 
     let scenario = generate_scenario(&network, config);
@@ -161,6 +165,7 @@ fn test_generate_scenario_large() {
         loco_count: 30,
         seed: 42,
         duration_days: 30,
+        ..Default::default()
     };
 
     let scenario = generate_scenario(&network, config);
