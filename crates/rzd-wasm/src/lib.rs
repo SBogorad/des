@@ -184,6 +184,15 @@ impl RzdSimulatorWasm {
     }
 
     #[wasm_bindgen]
+    pub fn get_stats_json(&self) -> Result<String, JsValue> {
+        let engine = self.engine.as_ref()
+            .ok_or_else(|| JsValue::from_str("Network not loaded"))?;
+
+        serde_json::to_string(engine.stats())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    #[wasm_bindgen]
     pub fn get_crew_state(&self, crew_id: &str) -> Result<String, JsValue> {
         let engine = self.engine.as_ref()
             .ok_or_else(|| JsValue::from_str("Network not loaded"))?;

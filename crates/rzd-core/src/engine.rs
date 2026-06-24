@@ -32,6 +32,9 @@ pub struct Engine {
     // Spatial indexes
     loco_by_station: HashMap<String, Vec<String>>,
     turnaround_stations: HashSet<String>,
+
+    // Event tracking for cancellation
+    pending_arrivals: HashMap<String, u64>,
 }
 
 impl Engine {
@@ -56,6 +59,7 @@ impl Engine {
             warmup_minutes: 0,
             loco_by_station: HashMap::new(),
             turnaround_stations,
+            pending_arrivals: HashMap::new(),
         }
     }
 
@@ -91,6 +95,14 @@ impl Engine {
         self.locos.len()
     }
 
+    pub fn stats(&self) -> &SimulationStats {
+        &self.stats
+    }
+
+    pub fn violations_summary(&self) -> crate::violations::ViolationSummary {
+        self.violations.summary()
+    }
+
     pub fn export_ced(&self) -> CedExport {
         build_ced_export(&self.tu3_rows, &self.violations.violations)
     }
@@ -98,9 +110,7 @@ impl Engine {
     // === EVENT BUILDER HELPER ===
 
     fn emit(&mut self, time: SimTime, kind: EventKind, crew_id: Option<String>, loco_id: Option<String>, segment_id: Option<String>, priority: u8) -> u64 {
-        let id = self.queue.next_id();
-        self.queue.push(SimEvent { id: 0, time, kind, crew_id, loco_id, segment_id, priority });
-        id
+        self.queue.push(SimEvent { id: 0, time, kind, crew_id, loco_id, segment_id, priority })
     }
 
     fn emit_now(&mut self, kind: EventKind, crew_id: Option<String>, loco_id: Option<String>, segment_id: Option<String>, priority: u8) -> u64 {
@@ -135,6 +145,19 @@ impl Engine {
         if let Some(loco) = self.locos.get_mut(loco_id) {
             loco.state = state;
         }
+        let utilization = match state {
+            LocoState::InUse => 1.0,
+            LocoState::Available | LocoState::Failed | LocoState::Maintenance { .. } => 0.0,
+        };
+        self.stats.loco_utilization.update(self.current_time as f64, utilization);
+    }
+
+    fn update_crew_utilization(&mut self, crew_id: &str) {
+        let utilization = self.crews.get(crew_id).map_or(0.0, |c| match c.state {
+            CrewState::Working | CrewState::Waiting | CrewState::Reserve => 1.0,
+            _ => 0.0,
+        });
+        self.stats.crew_utilization.update(self.current_time as f64, utilization);
     }
 
     fn is_turnaround(&self, station_id: &str) -> bool {
@@ -145,6 +168,9 @@ impl Engine {
 
     #[allow(clippy::too_many_arguments)]
     fn add_violation(&mut self, vtype: ViolationType, severity: Severity, crew_id: &str, loco_id: Option<String>, segment_id: Option<String>, description: &str, norm_reference: &str) -> String {
+        if self.in_warmup() {
+            return String::new();
+        }
         let vid = self.violations.next_id();
         self.violations.add_violation(Violation {
             id: vid.clone(),
@@ -209,7 +235,7 @@ impl Engine {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
         let crew = match self.crews.get_mut(&crew_id) { Some(c) => c, None => return };
 
-        crew.state = CrewState::Appearing;
+        crew.set_state(CrewState::Appearing);
         crew.shift_start = Some(self.current_time);
         crew.shift_work_min = 0;
         crew.overtime_8h_flagged = false;
@@ -224,7 +250,7 @@ impl Engine {
     fn handle_med_check_start(&mut self, event: SimEvent) {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::MedCheck;
+            crew.set_state(CrewState::MedCheck);
         }
         let duration = self.prng.range(10.0, 15.0) as u64;
         self.emit(self.current_time + duration, EventKind::MedCheckEnd, Some(crew_id), None, None, 10);
@@ -233,7 +259,7 @@ impl Engine {
     fn handle_med_check_end(&mut self, event: SimEvent) {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::PreTripCheck;
+            crew.set_state(CrewState::PreTripCheck);
         }
         let duration = self.prng.range(5.0, 10.0) as u64;
         self.emit(self.current_time + duration, EventKind::PreTripBriefingEnd, Some(crew_id), None, None, 10);
@@ -261,7 +287,7 @@ impl Engine {
             total_min += delay;
             let resolved = self.prng.chance(0.7);
             issues.push(AcceptanceIssue { kind: AcceptanceIssueKind::KlubUFault, delay_min: delay, resolved });
-            if !resolved && !self.in_warmup() {
+            if !resolved {
                 self.add_violation(ViolationType::AcceptanceDelay, Severity::Warning, crew_id,
                     Some(loco_id.to_string()), None,
                     &format!("КЛУБ-У неисправен, задержка {} мин", delay),
@@ -294,13 +320,13 @@ impl Engine {
             self.set_loco_state(&lid, LocoState::InUse);
 
             if let Some(crew) = self.crews.get_mut(&crew_id) {
-                crew.state = CrewState::Acceptance;
+                crew.set_state(CrewState::Acceptance);
                 crew.current_loco = Some(lid.clone());
             }
 
             let (issues, total_min) = self.generate_acceptance_issues(&crew_id, &lid, sections);
 
-            if total_min > 90 && !self.in_warmup() {
+            if total_min > 90 {
                 self.add_violation(ViolationType::AcceptanceDelay, Severity::Warning, &crew_id,
                     Some(lid.clone()), None,
                     &format!("Приёмка ТПС задержана >{} мин", total_min),
@@ -311,7 +337,9 @@ impl Engine {
                 crew.acceptance_issues.extend(issues);
             }
 
-            self.stats.record_acceptance(total_min);
+            if !self.in_warmup() {
+                self.stats.record_acceptance(total_min);
+            }
             self.emit(self.current_time + total_min as u64, EventKind::AcceptanceEnd, Some(crew_id), Some(lid), None, 10);
         } else {
             self.emit(self.current_time + 10, EventKind::AcceptanceStart, Some(crew_id), None, None, 20);
@@ -321,7 +349,7 @@ impl Engine {
     fn handle_acceptance_end(&mut self, event: SimEvent) {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::Waiting;
+            crew.set_state(CrewState::Waiting);
         }
         self.emit(self.current_time + 5, EventKind::DepartureCheckpoint, Some(crew_id), event.loco_id, None, 10);
     }
@@ -333,11 +361,13 @@ impl Engine {
         if wait_chance < self.norms.waiting_probability {
             let wait_min = self.prng.range(self.norms.waiting_min_min as f32, self.norms.waiting_max_min as f32) as u64;
             if let Some(crew) = self.crews.get_mut(&crew_id) {
-                crew.state = CrewState::Waiting;
+                crew.set_state(CrewState::Waiting);
             }
             self.emit_now(EventKind::WaitStart, Some(crew_id.clone()), event.loco_id.clone(), None, 10);
             self.emit(self.current_time + wait_min, EventKind::WaitEnd, Some(crew_id), event.loco_id, None, 10);
-            self.stats.record_wait(wait_min);
+            if !self.in_warmup() {
+                self.stats.record_wait(wait_min);
+            }
         } else {
             self.start_movement(crew_id, event.loco_id);
         }
@@ -346,7 +376,7 @@ impl Engine {
     fn handle_wait_start(&mut self, event: SimEvent) {
         if let Some(crew_id) = &event.crew_id {
             if let Some(crew) = self.crews.get_mut(crew_id) {
-                crew.state = CrewState::Waiting;
+                crew.set_state(CrewState::Waiting);
             }
         }
     }
@@ -354,7 +384,7 @@ impl Engine {
     fn handle_wait_end(&mut self, event: SimEvent) {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::Working;
+            crew.set_state(CrewState::Working);
             crew.shift_work_min += self.prng.range(20.0, 90.0) as u32;
         }
         self.start_movement(crew_id, event.loco_id);
@@ -384,7 +414,7 @@ impl Engine {
         let actual_time = (base_travel_time * sag_factor * jitter) as u64;
 
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::Working;
+            crew.set_state(CrewState::Working);
         }
 
         // Check for failure during travel
@@ -417,13 +447,17 @@ impl Engine {
 
         // Schedule arrival at next station
         let travel_seg = current_segment.clone();
-        self.emit(self.current_time + actual_time, EventKind::ArriveStation,
+        let cid = crew_id.clone();
+        let arrive_id = self.emit(self.current_time + actual_time, EventKind::ArriveStation,
             Some(crew_id), loco_id, Some(travel_seg), 10);
+        self.pending_arrivals.insert(cid, arrive_id);
     }
 
     fn handle_arrive(&mut self, event: SimEvent) {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
         let seg_id = match &event.segment_id { Some(s) => s.clone(), None => return };
+
+        self.pending_arrivals.remove(&crew_id);
 
         let segment = self.network.get_segment(&seg_id).cloned();
         let (next_station, _travel_time_min, seg_distance) = {
@@ -452,21 +486,17 @@ impl Engine {
         {
             let crew = match self.crews.get(&crew_id) { Some(c) => c, None => return };
             if crew.shift_work_min >= self.norms.max_shift_12h_min {
-                if !self.in_warmup() {
-                    self.add_violation(ViolationType::Overtime12h, Severity::Critical, &crew_id,
-                        event.loco_id.clone(), event.segment_id.clone(),
-                        &format!("Смена > {} мин (12ч)", crew.shift_work_min),
-                        "Приказ Минтранса №339, п.4.2");
-                }
+                self.add_violation(ViolationType::Overtime12h, Severity::Critical, &crew_id,
+                    event.loco_id.clone(), event.segment_id.clone(),
+                    &format!("Смена > {} мин (12ч)", crew.shift_work_min),
+                    "Приказ Минтранса №339, п.4.2");
                 self.emit_now(EventKind::LineChangeStart, Some(crew_id.clone()), event.loco_id.clone(), event.segment_id.clone(), 5);
                 return;
             } else if crew.shift_work_min >= self.norms.max_shift_8h_min && !crew.overtime_8h_flagged {
-                if !self.in_warmup() {
-                    self.add_violation(ViolationType::Overtime8h, Severity::Warning, &crew_id,
-                        event.loco_id.clone(), event.segment_id.clone(),
-                        &format!("Смена > {} мин (8ч)", crew.shift_work_min),
-                        "Приказ Минтранса №339, п.4.1");
-                }
+                self.add_violation(ViolationType::Overtime8h, Severity::Warning, &crew_id,
+                    event.loco_id.clone(), event.segment_id.clone(),
+                    &format!("Смена > {} мин (8ч)", crew.shift_work_min),
+                    "Приказ Минтранса №339, п.4.1");
                 if let Some(c) = self.crews.get_mut(&crew_id) {
                     c.overtime_8h_flagged = true;
                 }
@@ -499,8 +529,13 @@ impl Engine {
     fn handle_failure(&mut self, event: SimEvent, kind: FailureKind) {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
 
+        // Cancel pending arrival for this crew
+        if let Some(arrive_id) = self.pending_arrivals.remove(&crew_id) {
+            self.queue.cancel(arrive_id);
+        }
+
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::Working;
+            crew.set_state(CrewState::Working);
         }
 
         if let Some(ref lid) = event.loco_id {
@@ -511,19 +546,19 @@ impl Engine {
         }
 
         let severity = kind.severity();
-        if !self.in_warmup() {
-            self.add_violation(ViolationType::LineChangeForced,
-                if severity == FailureSeverity::Critical { Severity::Critical } else { Severity::Warning },
-                &crew_id, event.loco_id.clone(), event.segment_id.clone(),
-                &format!("Отказ {:?} на перегоне", kind),
-                "Технический регламент");
-        }
+        self.add_violation(ViolationType::LineChangeForced,
+            if severity == FailureSeverity::Critical { Severity::Critical } else { Severity::Warning },
+            &crew_id, event.loco_id.clone(), event.segment_id.clone(),
+            &format!("Отказ {:?} на перегоне", kind),
+            "Технический регламент");
 
         let repair_time = match severity {
             FailureSeverity::Critical => self.prng.range(60.0, 180.0) as u64,
             FailureSeverity::Warning => self.prng.range(15.0, 60.0) as u64,
         };
-        self.stats.record_repair(repair_time);
+        if !self.in_warmup() {
+            self.stats.record_repair(repair_time);
+        }
 
         self.emit(self.current_time + repair_time, EventKind::FailureResolved,
             Some(crew_id.clone()), event.loco_id.clone(), event.segment_id.clone(), 5);
@@ -546,7 +581,7 @@ impl Engine {
 
         if let Some(ref crew_id) = event.crew_id {
             if let Some(crew) = self.crews.get_mut(crew_id) {
-                crew.state = CrewState::Working;
+                crew.set_state(CrewState::Working);
             }
             self.start_movement(crew_id.clone(), event.loco_id);
         }
@@ -569,7 +604,7 @@ impl Engine {
         let go_reserve = self.prng.chance(self.norms.reserve_after_line_change as f64);
         if go_reserve {
             if let Some(crew) = self.crews.get_mut(&crew_id) {
-                crew.state = CrewState::Reserve;
+                crew.set_state(CrewState::Reserve);
                 crew.current_loco = None;
             }
             self.emit_now(EventKind::ReserveStart, Some(crew_id.clone()), None, event.segment_id.clone(), 10);
@@ -594,7 +629,7 @@ impl Engine {
                 _ => false,
             };
 
-            if is_critical && !self.in_warmup() {
+            if is_critical {
                 self.add_violation(ViolationType::VoltageSagShift, Severity::Warning, &crew_id,
                     event.loco_id.clone(), Some(segment_id.clone()),
                     &format!("Просадка напряжения {} В (норма {} В)", voltage_v,
@@ -631,7 +666,7 @@ impl Engine {
     fn handle_reserve_start(&mut self, event: SimEvent) {
         if let Some(crew_id) = &event.crew_id {
             if let Some(crew) = self.crews.get_mut(crew_id) {
-                crew.state = CrewState::Reserve;
+                crew.set_state(CrewState::Reserve);
             }
         }
     }
@@ -649,7 +684,7 @@ impl Engine {
     fn handle_turnaround_rest_start(&mut self, event: SimEvent) {
         if let Some(crew_id) = &event.crew_id {
             if let Some(crew) = self.crews.get_mut(crew_id) {
-                crew.state = CrewState::RestingAway;
+                crew.set_state(CrewState::RestingAway);
             }
         }
     }
@@ -685,17 +720,15 @@ impl Engine {
         if at_turnaround {
             let rest_min = self.prng.range(180.0, 360.0) as u64;
 
-            // Check absolute minimum
-            if (rest_min as u32) < self.norms.min_turnaround_rest_min && !self.in_warmup() {
+            if (rest_min as u32) < self.norms.min_turnaround_rest_min {
                 self.add_violation(ViolationType::ShortRest, Severity::Warning, &crew_id,
                     event.loco_id.clone(), None,
                     &format!("Отдых в обороте {} мин < минимума {} мин", rest_min, self.norms.min_turnaround_rest_min),
                     "Приказ Минтранса №339, п.5.3");
             }
 
-            // Check ratio-based minimum
             let crew_work = self.crews.get(&crew_id).map_or(0, |c| c.shift_work_min);
-            if (rest_min as f32) < (crew_work as f32 * self.norms.turnaround_rest_ratio) && !self.in_warmup() {
+            if (rest_min as f32) < (crew_work as f32 * self.norms.turnaround_rest_ratio) {
                 self.add_violation(ViolationType::ShortRest, Severity::Warning, &crew_id,
                     event.loco_id.clone(), None,
                     &format!("Отдых в обороте {} мин < 50% работы ({})", rest_min, crew_work),
@@ -711,6 +744,12 @@ impl Engine {
 
     fn handle_shift_end(&mut self, event: SimEvent) {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
+
+        if let Some(arrive_id) = self.pending_arrivals.remove(&crew_id) {
+            self.queue.cancel(arrive_id);
+        }
+
+        self.update_crew_utilization(&crew_id);
 
         let (shift_start, shift_work_min, loco_id_str, distance) = {
             let crew = match self.crews.get(&crew_id) { Some(c) => c, None => return };
@@ -742,7 +781,7 @@ impl Engine {
         }
 
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::Finished;
+            crew.set_state(CrewState::Finished);
             crew.total_shifts += 1;
             crew.cumulative_work_min += shift_work_min;
 
@@ -759,7 +798,7 @@ impl Engine {
 
         let night_shifts = self.crews.get(&crew_id).map_or(0, |c| c.night_shifts_in_row);
         let is_night = self.crews.get(&crew_id).is_some_and(|c| c.is_night_shift());
-        if is_night && night_shifts > self.norms.max_night_shifts_in_row && !self.in_warmup() {
+        if is_night && night_shifts > self.norms.max_night_shifts_in_row {
             self.add_violation(ViolationType::NightOverload, Severity::Critical, &crew_id,
                 None, None,
                 &format!("> {} ночных смен подряд", night_shifts),
@@ -776,10 +815,10 @@ impl Engine {
 
         let cumulative = self.crews.get(&crew_id).map_or(0, |c| c.cumulative_work_min);
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::RestingHome;
+            crew.set_state(CrewState::RestingHome);
         }
 
-        if cumulative > self.norms.max_monthly_work_min && !self.in_warmup() {
+        if cumulative > self.norms.max_monthly_work_min {
             self.add_violation(ViolationType::MonthlyOvertime, Severity::Critical, &crew_id,
                 None, None,
                 &format!("Месячная норма {} мин превышена", cumulative),
@@ -788,8 +827,7 @@ impl Engine {
 
         let rest_min = self.prng.range(self.norms.min_home_rest_min as f32, (self.norms.min_home_rest_min + 120) as f32) as u64;
 
-        // Check ShortHomeRest
-        if (rest_min as u32) < self.norms.min_home_rest_min && !self.in_warmup() {
+        if (rest_min as u32) < self.norms.min_home_rest_min {
             self.add_violation(ViolationType::ShortHomeRest, Severity::Warning, &crew_id,
                 None, None,
                 &format!("Домашний отдых {} мин < минимума {} мин", rest_min, self.norms.min_home_rest_min),
@@ -802,7 +840,7 @@ impl Engine {
     fn handle_home_rest_end(&mut self, event: SimEvent) {
         let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
         if let Some(crew) = self.crews.get_mut(&crew_id) {
-            crew.state = CrewState::AtHome;
+            crew.set_state(CrewState::AtHome);
             crew.shift_start = None;
             crew.shift_work_min = 0;
             crew.overtime_8h_flagged = false;

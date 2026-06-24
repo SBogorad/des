@@ -117,12 +117,10 @@ impl EventQueue {
         }
     }
 
-    pub fn push(&mut self, event: SimEvent) {
-        self.heap.push(event);
-    }
-
-    pub fn next_id(&mut self) -> u64 {
+    pub fn push(&mut self, mut event: SimEvent) -> u64 {
         self.counter += 1;
+        event.id = self.counter;
+        self.heap.push(event);
         self.counter
     }
 
