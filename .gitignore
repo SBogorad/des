@@ -1,0 +1,13 @@
+target/
+pkg/
+node_modules/
+dist/
+.env
+*.wasm
+.DS_Store
+*.swp
+*.swo
+idea/
+.vscode/
+*.log
+pnpm-lock.yaml
