@@ -114,6 +114,12 @@ impl Engine {
         build_ced_export(&self.tu3_rows, &self.violations.violations)
     }
 
+    pub fn region_multiplier_for_segment(&self, seg: &crate::network::Segment) -> f32 {
+        self.network.region_for_segment(&seg.id)
+            .map(|region_id| self.network.region_norms.get_default(region_id).failure_rate_multiplier)
+            .unwrap_or(1.0)
+    }
+
     // === EVENT BUILDER HELPER ===
 
     fn emit(&mut self, time: SimTime, kind: EventKind, crew_id: Option<String>, loco_id: Option<String>, segment_id: Option<String>, priority: u8) -> u64 {
@@ -427,7 +433,7 @@ impl Engine {
         // Check for failure during travel
         let seg = self.network.get_segment(&current_segment).cloned();
         if let Some(seg) = seg {
-            let fail_prob = seg.failure_base_rate * self.norms.region_multiplier_for_segment(&seg);
+            let fail_prob = seg.failure_base_rate * self.region_multiplier_for_segment(&seg);
             if self.prng.chance(fail_prob as f64) {
                 let failure_time = self.prng.range(0.0, actual_time as f32) as u64;
                 let all_failures = FailureKind::all();
@@ -863,10 +869,4 @@ impl Engine {
     // === VIOLATIONS ===
 
     fn handle_violation_detected(&mut self, _event: SimEvent, _vtype: &ViolationType) {}
-}
-
-impl RzdNorms {
-    pub fn region_multiplier_for_segment(&self, _seg: &crate::network::Segment) -> f32 {
-        1.0
-    }
 }
