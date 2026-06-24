@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
+use crate::norms::RegionNormsConfig;
 
 pub type StationId = String;
 pub type SegmentId = String;
@@ -96,6 +97,8 @@ pub struct Network {
     pub roads: HashMap<RoadId, Road>,
     #[serde(skip)]
     adjacency: HashMap<StationId, Vec<(StationId, SegmentId)>>,
+    #[serde(default)]
+    pub region_norms: RegionNormsConfig,
 }
 
 impl Network {
@@ -111,9 +114,20 @@ impl Network {
             legs,
             roads,
             adjacency: HashMap::new(),
+            region_norms: RegionNormsConfig::new(),
         };
         network.build_adjacency();
         network
+    }
+
+    pub fn with_region_norms(mut self, region_norms: RegionNormsConfig) -> Self {
+        self.region_norms = region_norms;
+        self
+    }
+
+    pub fn region_for_segment(&self, segment_id: &str) -> Option<&str> {
+        let seg = self.segments.get(segment_id)?;
+        self.stations.get(&seg.from).map(|s| s.region.as_str())
     }
 
     pub fn from_json(json: &str) -> Result<Self, NetworkError> {
@@ -125,6 +139,7 @@ impl Network {
             legs: raw.legs,
             roads: raw.roads,
             adjacency: HashMap::new(),
+            region_norms: raw.region_norms.unwrap_or_default(),
         };
 
         network.build_adjacency();
@@ -366,4 +381,5 @@ struct RawNetwork {
     segments: HashMap<SegmentId, Segment>,
     legs: HashMap<LegId, Leg>,
     roads: HashMap<RoadId, Road>,
+    region_norms: Option<RegionNormsConfig>,
 }

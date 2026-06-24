@@ -370,3 +370,165 @@ fn test_load_northern_json() {
         assert!(net.segments.len() >= 2);
     }
 }
+
+// === MULTI-REGION NETWORK TESTS ===
+
+use rzd_core::norms::{RegionNorms, RegionNormsConfig};
+
+fn make_multi_region_network() -> Network {
+    let mut stations = HashMap::new();
+    let mut segments = HashMap::new();
+    let mut legs = HashMap::new();
+    let mut roads = HashMap::new();
+
+    // Region NORTH: stations ST-001..ST-003
+    for i in 1..=3 {
+        let id = format!("ST-{:03}", i);
+        stations.insert(id.clone(), Station {
+            id: id.clone(),
+            name: format!("North Station {}", i),
+            kind: if i == 1 { StationKind::MainDepot } else { StationKind::Waypoint },
+            region: "NORTH".into(),
+            coords: None,
+            depot_id: if i == 1 { Some("DEP-N1".into()) } else { None },
+            voltage_kv: VoltageKind::DC3000,
+            electrification: true,
+        });
+    }
+    // Region SOUTH: stations ST-004..ST-005
+    for i in 4..=5 {
+        let id = format!("ST-{:03}", i);
+        stations.insert(id.clone(), Station {
+            id: id.clone(),
+            name: format!("South Station {}", i),
+            kind: if i == 5 { StationKind::Terminal } else { StationKind::Waypoint },
+            region: "SOUTH".into(),
+            coords: None,
+            depot_id: None,
+            voltage_kv: VoltageKind::AC25000,
+            electrification: true,
+        });
+    }
+
+    // Segments within NORTH
+    segments.insert("SEG-001".into(), Segment {
+        id: "SEG-001".into(), from: "ST-001".into(), to: "ST-002".into(),
+        distance_km: 50.0, base_speed_kmh: 120.0, gradient_factor: 1.0,
+        failure_base_rate: 0.001, voltage_sag_prob: 0.0005, single_track: false,
+    });
+    segments.insert("SEG-002".into(), Segment {
+        id: "SEG-002".into(), from: "ST-002".into(), to: "ST-003".into(),
+        distance_km: 40.0, base_speed_kmh: 120.0, gradient_factor: 1.0,
+        failure_base_rate: 0.001, voltage_sag_prob: 0.0005, single_track: false,
+    });
+    // Segment crossing NORTH→SOUTH
+    segments.insert("SEG-003".into(), Segment {
+        id: "SEG-003".into(), from: "ST-003".into(), to: "ST-004".into(),
+        distance_km: 60.0, base_speed_kmh: 100.0, gradient_factor: 1.2,
+        failure_base_rate: 0.002, voltage_sag_prob: 0.001, single_track: true,
+    });
+    // Segment within SOUTH
+    segments.insert("SEG-004".into(), Segment {
+        id: "SEG-004".into(), from: "ST-004".into(), to: "ST-005".into(),
+        distance_km: 35.0, base_speed_kmh: 140.0, gradient_factor: 1.0,
+        failure_base_rate: 0.001, voltage_sag_prob: 0.0003, single_track: false,
+    });
+
+    let seg_ids: Vec<String> = vec!["SEG-001".into(), "SEG-002".into(), "SEG-003".into(), "SEG-004".into()];
+    legs.insert("LEG-01".into(), rzd_core::network::Leg {
+        id: "LEG-01".into(), name: "North-South".into(),
+        segments: seg_ids, from_depot: "DEP-N1".into(), to_depot: "DEP-N1".into(),
+        total_km: 185.0, road_id: "RD-01".into(),
+    });
+    roads.insert("RD-01".into(), rzd_core::network::Road {
+        id: "RD-01".into(), name: "Main".into(),
+        stations: vec!["ST-001".into(), "ST-002".into(), "ST-003".into(), "ST-004".into(), "ST-005".into()],
+        depots: vec!["DEP-N1".into()],
+        legs: vec!["LEG-01".into()],
+        region_multiplier: 1.0,
+    });
+
+    let mut region_norms = RegionNormsConfig::new();
+    region_norms.add("NORTH".into(), RegionNorms {
+        region_id: "NORTH".into(),
+        failure_rate_multiplier: 1.5,
+        voltage_sag_multiplier: 2.0,
+        speed_multiplier: 0.9,
+        ..Default::default()
+    });
+    region_norms.add("SOUTH".into(), RegionNorms {
+        region_id: "SOUTH".into(),
+        failure_rate_multiplier: 0.8,
+        voltage_sag_multiplier: 0.5,
+        speed_multiplier: 1.1,
+        ..Default::default()
+    });
+
+    Network::new(stations, segments, legs, roads).with_region_norms(region_norms)
+}
+
+#[test]
+fn test_region_for_segment() {
+    let net = make_multi_region_network();
+    assert_eq!(net.region_for_segment("SEG-001"), Some("NORTH"));
+    assert_eq!(net.region_for_segment("SEG-004"), Some("SOUTH"));
+    assert_eq!(net.region_for_segment("SEG-003"), Some("NORTH"));
+    assert_eq!(net.region_for_segment("NONEXISTENT"), None);
+}
+
+#[test]
+fn test_region_norms_failure_multiplier() {
+    let net = make_multi_region_network();
+    let eng = Engine::new(net, 42);
+
+    let seg_north = eng.network.segments.get("SEG-001").unwrap();
+    assert!((eng.region_multiplier_for_segment(seg_north) - 1.5).abs() < 0.01);
+
+    let seg_south = eng.network.segments.get("SEG-004").unwrap();
+    assert!((eng.region_multiplier_for_segment(seg_south) - 0.8).abs() < 0.01);
+}
+
+#[test]
+fn test_region_norms_apply_overrides() {
+    let mut norms = rzd_core::norms::RzdNorms::default();
+    assert_eq!(norms.max_shift_8h_min, 480);
+
+    let overrides = RegionNorms {
+        region_id: "NORTH".into(),
+        max_shift_8h_min: Some(420),
+        min_home_rest_min: Some(720),
+        ..Default::default()
+    };
+    norms.apply_region_overrides(&overrides);
+
+    assert_eq!(norms.max_shift_8h_min, 420);
+    assert_eq!(norms.min_home_rest_min, 720);
+    assert_eq!(norms.max_shift_12h_min, 720); // unchanged
+}
+
+#[test]
+fn test_region_norms_config_get_default() {
+    let mut config = RegionNormsConfig::new();
+    config.add("NORTH".into(), RegionNorms {
+        region_id: "NORTH".into(),
+        failure_rate_multiplier: 2.0,
+        ..Default::default()
+    });
+
+    let north = config.get_default("NORTH");
+    assert_eq!(north.failure_rate_multiplier, 2.0);
+
+    let unknown = config.get_default("UNKNOWN");
+    assert_eq!(unknown.failure_rate_multiplier, 1.0);
+    assert_eq!(unknown.region_id, "UNKNOWN");
+}
+
+#[test]
+fn test_network_serializes_region_norms() {
+    let net = make_multi_region_network();
+    let json = serde_json::to_string(&net).unwrap();
+    let parsed: Network = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.region_norms.regions.len(), 2);
+    let north = parsed.region_norms.get_default("NORTH");
+    assert!((north.failure_rate_multiplier - 1.5).abs() < 0.01);
+}
