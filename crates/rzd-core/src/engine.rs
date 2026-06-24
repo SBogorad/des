@@ -71,6 +71,14 @@ impl Engine {
         self.crews.insert(crew.id.clone(), crew);
     }
 
+    pub fn schedule_all_shifts(&mut self, start_offset: SimTime, interval: SimTime) {
+        let mut idx = 0u64;
+        for crew_id in self.crews.keys().cloned().collect::<Vec<_>>() {
+            self.emit(start_offset + idx * interval, EventKind::ShiftAppear, Some(crew_id), None, None, 10);
+            idx += 1;
+        }
+    }
+
     pub fn add_loco(&mut self, loco: Locomotive) {
         self.loco_by_station.entry(loco.position.clone()).or_default().push(loco.id.clone());
         self.locos.insert(loco.id.clone(), loco);

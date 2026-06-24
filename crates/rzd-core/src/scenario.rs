@@ -32,7 +32,7 @@ pub struct LocoSeriesDef {
     pub depot_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
     pub crews: Vec<Crew>,
     pub locos: Vec<Locomotive>,
