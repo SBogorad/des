@@ -92,5 +92,27 @@
     "ROAD-WEST": {"id":"ROAD-WEST","name":"Ярославльская Дирекция","stations":["ST-001","ST-002","ST-003","ST-004","ST-005"],"depots":["DEP-01","DEP-02","DEP-03"],"legs":["LEG-01","LEG-02"],"region_multiplier":1.0},
     "ROAD-CENTRAL": {"id":"ROAD-CENTRAL","name":"Кировская Дирекция","stations":["ST-005","ST-006","ST-007","ST-008","ST-009","ST-010","ST-011","ST-012","ST-013","ST-014","ST-017","ST-018","ST-019","ST-020"],"depots":["DEP-03","DEP-04","DEP-05","DEP-06","DEP-07"],"legs":["LEG-03","LEG-04","LEG-05","LEG-06","LEG-07","LEG-08"],"region_multiplier":1.1},
     "ROAD-EAST": {"id":"ROAD-EAST","name":"Тюменская Дирекция","stations":["ST-015","ST-016","ST-021","ST-022","ST-023","ST-024","ST-025","ST-026","ST-027","ST-028","ST-029","ST-030","ST-031","ST-032","ST-033","ST-034","ST-035","ST-006"],"depots":["DEP-08","DEP-09","DEP-10"],"legs":["LEG-09","LEG-10"],"region_multiplier":1.2}
+  },
+  "region_norms": {
+    "regions": {
+      "A-West": {
+        "region_id": "A-West",
+        "failure_rate_multiplier": 1.0,
+        "voltage_sag_multiplier": 1.0,
+        "speed_multiplier": 1.0
+      },
+      "B-Central": {
+        "region_id": "B-Central",
+        "failure_rate_multiplier": 1.2,
+        "voltage_sag_multiplier": 1.3,
+        "speed_multiplier": 0.95
+      },
+      "C-East": {
+        "region_id": "C-East",
+        "failure_rate_multiplier": 1.5,
+        "voltage_sag_multiplier": 0.5,
+        "speed_multiplier": 0.9
+      }
+    }
   }
 }
