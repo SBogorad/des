@@ -149,6 +149,12 @@ impl EventQueue {
     pub fn peek(&self) -> Option<&SimEvent> {
         self.heap.peek()
     }
+
+    pub fn clear(&mut self) {
+        self.heap.clear();
+        self.cancelled.clear();
+        self.counter = 0;
+    }
 }
 
 pub fn make_event(time: SimTime, kind: EventKind, crew_id: Option<CrewId>, loco_id: Option<LocoId>, segment_id: Option<SegmentId>, priority: u8, id: u64) -> SimEvent {
