@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for c in gen.crews { engine.add_crew(c); }
                 for l in gen.locos { engine.add_loco(l); }
             } else {
-                let config = ScenarioConfig { crew_count: crews, loco_count: locos, seed, duration_days: days };
+                let config = ScenarioConfig { crew_count: crews, loco_count: locos, seed, duration_days: days, ..Default::default() };
                 let gen = generate_scenario(&engine.network, config);
                 for c in gen.crews { engine.add_crew(c); }
                 for l in gen.locos { engine.add_loco(l); }
@@ -150,7 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let network_json = std::fs::read_to_string(&network)?;
             let net = Network::from_json(&network_json)?;
 
-            let config = ScenarioConfig { crew_count: crews, loco_count: locos, seed, duration_days: days };
+            let config = ScenarioConfig { crew_count: crews, loco_count: locos, seed, duration_days: days, ..Default::default() };
             let scenario = generate_scenario(&net, config);
 
             let json = serde_json::to_string_pretty(&scenario)?;

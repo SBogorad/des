@@ -211,7 +211,7 @@ fn build_large_network() -> Network {
 }
 
 fn build_engine(network: &Network, crews: usize, locos: usize, seed: u32) -> Engine {
-    let config = ScenarioConfig { crew_count: crews, loco_count: locos, seed, duration_days: 7 };
+    let config = ScenarioConfig { crew_count: crews, loco_count: locos, seed, duration_days: 7, ..Default::default() };
     let scenario = generate_scenario(network, config);
     let mut eng = Engine::new(network.clone(), seed);
     eng.set_warmup(60);
@@ -286,7 +286,7 @@ fn bench_scenarios_generation(c: &mut Criterion) {
         let label = format!("{}x{}", crews, locos);
         group.bench_function(&label, |b| {
             b.iter(|| {
-                let config = ScenarioConfig { crew_count: crews, loco_count: locos, seed: 42, duration_days: 30 };
+                let config = ScenarioConfig { crew_count: crews, loco_count: locos, seed: 42, duration_days: 30, ..Default::default() };
                 generate_scenario(&network, config)
             });
         });
