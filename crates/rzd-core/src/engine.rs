@@ -72,10 +72,9 @@ impl Engine {
     }
 
     pub fn schedule_all_shifts(&mut self, start_offset: SimTime, interval: SimTime) {
-        let mut idx = 0u64;
-        for crew_id in self.crews.keys().cloned().collect::<Vec<_>>() {
-            self.emit(start_offset + idx * interval, EventKind::ShiftAppear, Some(crew_id), None, None, 10);
-            idx += 1;
+        let crew_ids: Vec<String> = self.crews.keys().cloned().collect();
+        for (idx, crew_id) in crew_ids.into_iter().enumerate() {
+            self.emit(start_offset + (idx as u64) * interval, EventKind::ShiftAppear, Some(crew_id), None, None, 10);
         }
     }
 
