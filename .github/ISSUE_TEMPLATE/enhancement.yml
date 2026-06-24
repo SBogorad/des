@@ -1,0 +1,39 @@
+name: Enhancement
+description: Improve existing functionality
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: "## Enhancement"
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Behavior
+      description: What currently exists
+    validations:
+      required: true
+  - type: textarea
+    id: desired
+    attributes:
+      label: Desired Behavior
+      description: What should change
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why this matters
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - engine
+        - network
+        - wasm
+        - export
+        - scenario
+        - cli
+        - ci
+        - docs
