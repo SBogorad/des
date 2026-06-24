@@ -418,13 +418,33 @@ impl Engine {
         };
 
         let base_travel_time = self.network.segment_travel_time_min(&current_segment).unwrap_or(60.0);
+
+        let physics_time = if let Some(seg) = self.network.get_segment(&current_segment) {
+            let loco_kind = loco_id.as_ref()
+                .and_then(|lid| self.locos.get(lid))
+                .map(|l| l.loco_kind)
+                .unwrap_or(crate::entities::LocoKind::Electric);
+            let loco_sections = loco_id.as_ref()
+                .and_then(|lid| self.locos.get(lid))
+                .map(|l| l.sections)
+                .unwrap_or(2);
+            let region_mult = if let Some(seg_ref) = self.network.get_segment(&current_segment) {
+                self.region_multiplier_for_segment(seg_ref)
+            } else { 1.0 };
+            crate::physics::TrainPhysics::for_loco_kind(loco_kind, loco_sections)
+                .compute_travel_time_min(seg.distance_km, seg.base_speed_kmh, seg.gradient_factor)
+                * region_mult
+        } else {
+            base_travel_time
+        };
+
         let sag_factor = if self.crews.get(&crew_id).is_some_and(|c| c.in_voltage_sag) {
             self.norms.voltage_sag_speed_factor
         } else {
             1.0
         };
         let jitter = self.prng.range(0.85, 1.15);
-        let actual_time = (base_travel_time * sag_factor * jitter) as u64;
+        let actual_time = (physics_time * sag_factor * jitter) as u64;
 
         if let Some(crew) = self.crews.get_mut(&crew_id) {
             crew.set_state(CrewState::Working);
