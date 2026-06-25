@@ -35,6 +35,9 @@ pub struct Engine {
 
     // Event tracking for cancellation
     pending_arrivals: HashMap<String, u64>,
+
+    // Acceptance retry tracking
+    acceptance_retries: HashMap<String, u32>,
 }
 
 impl Engine {
@@ -60,6 +63,7 @@ impl Engine {
             loco_by_station: HashMap::new(),
             turnaround_stations,
             pending_arrivals: HashMap::new(),
+            acceptance_retries: HashMap::new(),
         }
     }
 
@@ -329,6 +333,7 @@ impl Engine {
         let loco_id = self.find_available_loco(&crew_pos);
 
         if let Some(lid) = loco_id {
+            self.acceptance_retries.remove(&crew_id);
             let sections = self.locos.get(&lid).map_or(2, |l| l.sections);
             self.set_loco_state(&lid, LocoState::InUse);
 
@@ -355,7 +360,15 @@ impl Engine {
             }
             self.emit(self.current_time + total_min as u64, EventKind::AcceptanceEnd, Some(crew_id), Some(lid), None, 10);
         } else {
-            self.emit(self.current_time + 10, EventKind::AcceptanceStart, Some(crew_id), None, None, 20);
+            let retries = self.acceptance_retries.entry(crew_id.clone()).or_insert(0);
+            *retries += 1;
+            if *retries > 12 {
+                self.acceptance_retries.remove(&crew_id);
+                self.emit_now(EventKind::ShiftEnd, Some(crew_id), event.loco_id, None, 5);
+            } else {
+                let delay = (*retries as u64 * 10).min(60);
+                self.emit(self.current_time + delay, EventKind::AcceptanceStart, Some(crew_id), None, None, 20);
+            }
         }
     }
 
@@ -550,10 +563,19 @@ impl Engine {
     }
 
     fn handle_pass_waypoint(&mut self, event: SimEvent) {
-        if let Some(crew_id) = &event.crew_id {
-            if let Some(crew) = self.crews.get_mut(crew_id) {
-                crew.shift_work_min += 2;
-            }
+        let crew_id = match &event.crew_id { Some(id) => id.clone(), None => return };
+
+        let route_finished = {
+            let crew = match self.crews.get_mut(&crew_id) { Some(c) => c, None => return };
+            crew.shift_work_min += 2;
+            crew.route_index += 1;
+            crew.route_index >= crew.route_segments.len()
+        };
+
+        if route_finished {
+            self.emit(self.current_time + 5, EventKind::ArrivalCheckpoint, Some(crew_id), event.loco_id, None, 10);
+        } else {
+            self.start_movement(crew_id, event.loco_id);
         }
     }
 
@@ -605,10 +627,9 @@ impl Engine {
     fn handle_failure_resolved(&mut self, event: SimEvent) {
         // Only set Available if loco is actually Failed (not already handled by line change)
         if let Some(ref lid) = event.loco_id {
-            if let Some(loco) = self.locos.get_mut(lid) {
-                if loco.state == LocoState::Failed {
-                    loco.state = LocoState::Available;
-                }
+            let is_failed = self.locos.get(lid).is_some_and(|l| l.state == LocoState::Failed);
+            if is_failed {
+                self.set_loco_state(lid, LocoState::Available);
             }
         }
 
@@ -625,11 +646,12 @@ impl Engine {
 
         // Return loco to station as Available only if it's currently InUse (not Failed)
         if let Some(ref lid) = event.loco_id {
+            let was_in_use = self.locos.get(lid).is_some_and(|l| l.state == LocoState::InUse);
+            let crew_pos = self.crews.get(&crew_id).map(|c| c.position.clone()).unwrap_or_default();
+            if was_in_use {
+                self.set_loco_state(lid, LocoState::Available);
+            }
             if let Some(loco) = self.locos.get_mut(lid) {
-                if loco.state == LocoState::InUse {
-                    loco.state = LocoState::Available;
-                }
-                let crew_pos = self.crews.get(&crew_id).map(|c| c.position.clone()).unwrap_or_default();
                 loco.position = crew_pos;
             }
         }
