@@ -116,6 +116,21 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
         .collect();
     depot_ids.sort();
 
+    if depot_ids.is_empty() {
+        return Scenario {
+            crews: Vec::new(),
+            locos: Vec::new(),
+            config,
+            metadata: ScenarioMetadata {
+                total_crews: 0,
+                total_locos: 0,
+                depots_used: Vec::new(),
+                regions_covered: Vec::new(),
+                legs_assigned: network.legs.len(),
+            },
+        };
+    }
+
     let mut depot_station_map: HashMap<String, Vec<String>> = HashMap::new();
     for station in network.stations.values() {
         if let Some(ref depot_id) = station.depot_id {
@@ -159,7 +174,7 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
             .unwrap_or_default();
         let start_station = depot_stations.first()
             .cloned()
-            .unwrap_or_else(|| network.stations.keys().next().unwrap().clone());
+            .unwrap_or_else(|| network.stations.keys().min().cloned().unwrap_or_default());
 
         let available_legs = depot_legs.get(depot_id)
             .cloned()
@@ -213,7 +228,7 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
             .unwrap_or_default();
         let start_station = depot_stations.first()
             .cloned()
-            .unwrap_or_else(|| network.stations.keys().next().unwrap().clone());
+            .unwrap_or_else(|| network.stations.keys().min().cloned().unwrap_or_default());
 
         let matching_series: Vec<&LocoSeriesDef> = series_defs.iter()
             .filter(|s| s.depot_ids.contains(depot_id))

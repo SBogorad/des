@@ -57,7 +57,7 @@ impl RzdNorms {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegionNorms {
     pub region_id: String,
     pub failure_rate_multiplier: f32,
@@ -82,6 +82,35 @@ pub struct RegionNorms {
     pub voltage_sag_threshold_dc: Option<f32>,
     pub voltage_sag_threshold_ac: Option<f32>,
     pub voltage_sag_speed_factor: Option<f32>,
+}
+
+impl Default for RegionNorms {
+    fn default() -> Self {
+        Self {
+            region_id: String::new(),
+            failure_rate_multiplier: 1.0,
+            voltage_sag_multiplier: 1.0,
+            speed_multiplier: 1.0,
+            max_shift_8h_min: None,
+            max_shift_12h_min: None,
+            max_monthly_work_min: None,
+            min_home_rest_min: None,
+            min_turnaround_rest_min: None,
+            turnaround_rest_ratio: None,
+            max_night_shifts_in_row: None,
+            acceptance_per_section_min: None,
+            handover_min_min: None,
+            handover_max_min: None,
+            waiting_probability: None,
+            waiting_min_min: None,
+            waiting_max_min: None,
+            line_change_on_critical: None,
+            reserve_after_line_change: None,
+            voltage_sag_threshold_dc: None,
+            voltage_sag_threshold_ac: None,
+            voltage_sag_speed_factor: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

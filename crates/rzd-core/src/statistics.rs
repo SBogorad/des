@@ -50,18 +50,20 @@ pub struct TimeWeightedAverage {
     last_change: f64,
     last_value: f64,
     total_time: f64,
+    initialized: bool,
 }
 
 impl TimeWeightedAverage {
     pub fn new() -> Self {
-        Self { area: 0.0, last_change: 0.0, last_value: 0.0, total_time: 0.0 }
+        Self { area: 0.0, last_change: 0.0, last_value: 0.0, total_time: 0.0, initialized: false }
     }
 
     pub fn update(&mut self, current_time: f64, new_value: f64) {
-        if self.total_time > 0.0 || self.last_change > 0.0 {
+        if self.initialized {
             let dt = current_time - self.last_change;
             self.area += self.last_value * dt;
         }
+        self.initialized = true;
         self.last_value = new_value;
         self.last_change = current_time;
         self.total_time = current_time;
