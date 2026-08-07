@@ -1,8 +1,11 @@
-use serde::{Deserialize, Serialize};
+use crate::entities::{Crew, CrewQualification, LocoKind, LocoState, Locomotive};
 use crate::network::Network;
-use crate::entities::{Crew, Locomotive, LocoKind, LocoState};
 use crate::prng::Mulberry32;
+use crate::synthetic_person::SyntheticPersonGenerator;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+pub const SCENARIO_SCHEMA_V1: &str = "rzd-des-scenario/v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScenarioConfig {
@@ -14,9 +17,15 @@ pub struct ScenarioConfig {
     pub shift_spread_min: u32,
     #[serde(default)]
     pub night_shift_ratio: f32,
+    #[serde(default)]
+    pub allowed_depot_ids: Vec<String>,
+    #[serde(default)]
+    pub allowed_leg_ids: Vec<String>,
 }
 
-fn default_shift_spread_min() -> u32 { 30 }
+fn default_shift_spread_min() -> u32 {
+    30
+}
 
 impl Default for ScenarioConfig {
     fn default() -> Self {
@@ -27,6 +36,58 @@ impl Default for ScenarioConfig {
             duration_days: 30,
             shift_spread_min: 30,
             night_shift_ratio: 0.3,
+            allowed_depot_ids: Vec::new(),
+            allowed_leg_ids: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScenarioDocument {
+    pub schema: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub config: ScenarioConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum ScenarioDocumentInput {
+    Versioned(ScenarioDocument),
+    Bare(ScenarioConfig),
+}
+
+impl ScenarioDocument {
+    pub fn new(config: ScenarioConfig) -> Self {
+        Self {
+            schema: SCENARIO_SCHEMA_V1.to_string(),
+            name: None,
+            description: None,
+            config,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != SCENARIO_SCHEMA_V1 {
+            return Err(format!(
+                "unsupported scenario schema '{}', expected {}",
+                self.schema, SCENARIO_SCHEMA_V1
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn from_json(json: &str) -> Result<Self, String> {
+        let parsed: ScenarioDocumentInput =
+            serde_json::from_str(json).map_err(|e| format!("scenario JSON parse error: {e}"))?;
+        match parsed {
+            ScenarioDocumentInput::Versioned(doc) => {
+                doc.validate()?;
+                Ok(doc)
+            }
+            ScenarioDocumentInput::Bare(config) => Ok(Self::new(config)),
         }
     }
 }
@@ -108,9 +169,23 @@ fn experience_distribution(prng: &mut Mulberry32, total: usize) -> Vec<CrewExper
 
 pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario {
     let mut prng = Mulberry32::new(config.seed);
+    let mut person_gen = SyntheticPersonGenerator::new(config.seed.wrapping_add(0xDEAD));
+    let allowed_depots: std::collections::HashSet<&str> = config
+        .allowed_depot_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let allowed_legs: std::collections::HashSet<&str> =
+        config.allowed_leg_ids.iter().map(String::as_str).collect();
+    let depot_allowed =
+        |depot_id: &str| allowed_depots.is_empty() || allowed_depots.contains(depot_id);
+    let leg_allowed = |leg_id: &str| allowed_legs.is_empty() || allowed_legs.contains(leg_id);
 
-    let mut depot_ids: Vec<String> = network.roads.values()
+    let mut depot_ids: Vec<String> = network
+        .roads
+        .values()
         .flat_map(|r| r.depots.iter().cloned())
+        .filter(|depot_id| depot_allowed(depot_id))
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();
@@ -140,18 +215,54 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
                 .push(station.id.clone());
         }
     }
+    for stations in depot_station_map.values_mut() {
+        stations.sort();
+    }
 
     let depot_legs: HashMap<String, Vec<String>> = {
         let mut map: HashMap<String, Vec<String>> = HashMap::new();
         for leg in network.legs.values() {
+            if !leg_allowed(&leg.id) || !depot_allowed(&leg.from_depot) {
+                continue;
+            }
             map.entry(leg.from_depot.clone())
                 .or_default()
                 .push(leg.id.clone());
         }
+        for legs in map.values_mut() {
+            legs.sort();
+        }
         map
     };
 
-    let mut regions_covered: Vec<String> = network.stations.values()
+    let selected_leg_ids: std::collections::HashSet<&str> = if allowed_legs.is_empty() {
+        network
+            .legs
+            .values()
+            .filter(|leg| depot_allowed(&leg.from_depot))
+            .map(|leg| leg.id.as_str())
+            .collect()
+    } else {
+        network
+            .legs
+            .values()
+            .filter(|leg| leg_allowed(&leg.id) && depot_allowed(&leg.from_depot))
+            .map(|leg| leg.id.as_str())
+            .collect()
+    };
+    let station_ids_in_scope: std::collections::HashSet<&str> = selected_leg_ids
+        .iter()
+        .filter_map(|leg_id| network.legs.get(*leg_id))
+        .flat_map(|leg| leg.segments.iter())
+        .filter_map(|segment_id| network.segments.get(segment_id))
+        .flat_map(|segment| [segment.from.as_str(), segment.to.as_str()])
+        .collect();
+    let mut regions_covered: Vec<String> = network
+        .stations
+        .values()
+        .filter(|station| {
+            station_ids_in_scope.is_empty() || station_ids_in_scope.contains(station.id.as_str())
+        })
         .map(|s| s.region.clone())
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
@@ -169,31 +280,29 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
     };
 
     for depot_id in &depot_ids {
-        let depot_stations = depot_station_map.get(depot_id)
-            .cloned()
-            .unwrap_or_default();
-        let start_station = depot_stations.first()
+        let depot_stations = depot_station_map.get(depot_id).cloned().unwrap_or_default();
+        let start_station = depot_stations
+            .first()
             .cloned()
             .unwrap_or_else(|| network.stations.keys().min().cloned().unwrap_or_default());
 
-        let available_legs = depot_legs.get(depot_id)
-            .cloned()
-            .unwrap_or_default();
+        let available_legs = depot_legs.get(depot_id).cloned().unwrap_or_default();
 
         let n = crews_per_depot.min(config.crew_count - crews.len());
         for i in 0..n {
-            if crew_idx >= config.crew_count { break; }
-            let experience = experiences.get(crew_idx).copied().unwrap_or(CrewExperience::Standard);
+            if crew_idx >= config.crew_count {
+                break;
+            }
+            let experience = experiences
+                .get(crew_idx)
+                .copied()
+                .unwrap_or(CrewExperience::Standard);
             let (min_shift, max_shift) = experience.shift_length_range();
 
             crew_idx += 1;
             let crew_id = format!("CREW-{:04}", crew_idx);
 
-            let mut crew = Crew::new(
-                crew_id,
-                depot_id.clone(),
-                start_station.clone(),
-            );
+            let mut crew = Crew::new(crew_id, depot_id.clone(), start_station.clone());
 
             if !available_legs.is_empty() {
                 let leg_idx = prng.range(0.0, available_legs.len() as f32) as usize;
@@ -212,6 +321,17 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
                 crew.night_shifts_in_row = 1;
             }
 
+            crew.personnel_number = person_gen.generate_personnel_number();
+            crew.full_name = person_gen.generate_driver_name();
+            crew.assistant_personnel_number = person_gen.generate_personnel_number();
+            crew.assistant_full_name = person_gen.generate_assistant_name();
+            crew.qualification = Some(match experience {
+                CrewExperience::Junior => CrewQualification::Junior,
+                CrewExperience::Standard => CrewQualification::Assistant,
+                CrewExperience::Senior => CrewQualification::Senior,
+                CrewExperience::Master => CrewQualification::Instructor,
+            });
+
             crews.push(crew);
         }
     }
@@ -223,14 +343,14 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
     let mut loco_idx = 0;
 
     for depot_id in &depot_ids {
-        let depot_stations = depot_station_map.get(depot_id)
-            .cloned()
-            .unwrap_or_default();
-        let start_station = depot_stations.first()
+        let depot_stations = depot_station_map.get(depot_id).cloned().unwrap_or_default();
+        let start_station = depot_stations
+            .first()
             .cloned()
             .unwrap_or_else(|| network.stations.keys().min().cloned().unwrap_or_default());
 
-        let matching_series: Vec<&LocoSeriesDef> = series_defs.iter()
+        let matching_series: Vec<&LocoSeriesDef> = series_defs
+            .iter()
             .filter(|s| s.depot_ids.contains(depot_id))
             .collect();
 
@@ -267,6 +387,8 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
                 mileage_km: mileage,
                 hours_since_to: hours_since,
                 failures_total: 0,
+                inventory_number: person_gen.generate_loco_number(500, 9999),
+                manufacture_year: 2000 + (person_gen.next_u32() % 25) as u16,
             });
         }
     }
@@ -280,7 +402,7 @@ pub fn generate_scenario(network: &Network, config: ScenarioConfig) -> Scenario 
             total_locos: loco_idx,
             depots_used: depot_ids,
             regions_covered,
-            legs_assigned: network.legs.len(),
+            legs_assigned: selected_leg_ids.len(),
         },
     }
 }
@@ -292,7 +414,16 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             name: "Электровоз 2-секционный".into(),
             kind: "Electric".into(),
             sections: 2,
-            depot_ids: vec!["DEP-01".into(), "DEP-03".into(), "DEP-04".into(), "DEP-10".into()],
+            depot_ids: vec![
+                "DEP-01".into(),
+                "DEP-03".into(),
+                "DEP-04".into(),
+                "DEP-10".into(),
+                "SD-1".into(),
+                "SD-2".into(),
+                "TD-72".into(),
+                "TD-74".into(),
+            ],
             max_shift_hours: 12.0,
             acceleration_kmh_per_s: 0.6,
         },
@@ -301,7 +432,12 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             name: "Электровоз 4-секционный".into(),
             kind: "Electric".into(),
             sections: 4,
-            depot_ids: vec!["DEP-01".into(), "DEP-07".into()],
+            depot_ids: vec![
+                "DEP-01".into(),
+                "DEP-07".into(),
+                "SD-1".into(),
+                "SD-5".into(),
+            ],
             max_shift_hours: 12.0,
             acceleration_kmh_per_s: 0.5,
         },
@@ -310,7 +446,13 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             name: "Пассажирский электровоз".into(),
             kind: "Electric".into(),
             sections: 2,
-            depot_ids: vec!["DEP-01".into(), "DEP-04".into()],
+            depot_ids: vec![
+                "DEP-01".into(),
+                "DEP-04".into(),
+                "SD-2".into(),
+                "TD-72".into(),
+                "TD-74".into(),
+            ],
             max_shift_hours: 10.0,
             acceleration_kmh_per_s: 0.7,
         },
@@ -319,7 +461,16 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             name: "Тепловоз 7-осный".into(),
             kind: "Diesel".into(),
             sections: 1,
-            depot_ids: vec!["DEP-02".into(), "DEP-05".into(), "DEP-06".into(), "DEP-08".into()],
+            depot_ids: vec![
+                "DEP-02".into(),
+                "DEP-05".into(),
+                "DEP-06".into(),
+                "DEP-08".into(),
+                "SD-7".into(),
+                "TD-71".into(),
+                "TD-75".into(),
+                "TD-77".into(),
+            ],
             max_shift_hours: 10.0,
             acceleration_kmh_per_s: 0.4,
         },
@@ -328,7 +479,14 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             name: "Тепловоз 9-осный".into(),
             kind: "Diesel".into(),
             sections: 1,
-            depot_ids: vec!["DEP-05".into(), "DEP-06".into(), "DEP-08".into()],
+            depot_ids: vec![
+                "DEP-05".into(),
+                "DEP-06".into(),
+                "DEP-08".into(),
+                "TD-71".into(),
+                "TD-75".into(),
+                "TD-77".into(),
+            ],
             max_shift_hours: 10.0,
             acceleration_kmh_per_s: 0.35,
         },
@@ -337,7 +495,12 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             name: "Тепловоз пассажирский".into(),
             kind: "Diesel".into(),
             sections: 1,
-            depot_ids: vec!["DEP-02".into(), "DEP-04".into()],
+            depot_ids: vec![
+                "DEP-02".into(),
+                "DEP-04".into(),
+                "SD-7".into(),
+                "TD-71".into(),
+            ],
             max_shift_hours: 10.0,
             acceleration_kmh_per_s: 0.45,
         },
@@ -346,7 +509,13 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             name: "Двухсекционный тепловоз".into(),
             kind: "Diesel".into(),
             sections: 2,
-            depot_ids: vec!["DEP-05".into(), "DEP-06".into()],
+            depot_ids: vec![
+                "DEP-05".into(),
+                "DEP-06".into(),
+                "SD-7".into(),
+                "TD-71".into(),
+                "TD-75".into(),
+            ],
             max_shift_hours: 12.0,
             acceleration_kmh_per_s: 0.3,
         },
@@ -355,7 +524,13 @@ fn default_loco_series() -> Vec<LocoSeriesDef> {
             name: "Двухmodes электровоз".into(),
             kind: "Dual".into(),
             sections: 2,
-            depot_ids: vec!["DEP-03".into()],
+            depot_ids: vec![
+                "DEP-03".into(),
+                "SD-3".into(),
+                "SD-5".into(),
+                "TD-72".into(),
+                "TD-74".into(),
+            ],
             max_shift_hours: 11.0,
             acceleration_kmh_per_s: 0.5,
         },
@@ -371,8 +546,14 @@ mod tests {
         let mut prng = Mulberry32::new(42);
         let exps = experience_distribution(&mut prng, 100);
         assert_eq!(exps.len(), 100);
-        let juniors = exps.iter().filter(|e| **e == CrewExperience::Junior).count();
-        let masters = exps.iter().filter(|e| **e == CrewExperience::Master).count();
+        let juniors = exps
+            .iter()
+            .filter(|e| **e == CrewExperience::Junior)
+            .count();
+        let masters = exps
+            .iter()
+            .filter(|e| **e == CrewExperience::Master)
+            .count();
         assert!(juniors > 10, "Expected ~15 juniors, got {}", juniors);
         assert!(masters > 0, "Expected ~5 masters, got {}", masters);
     }
@@ -383,5 +564,94 @@ mod tests {
         assert!(min < max);
         let (min_m, _max_m) = CrewExperience::Master.shift_length_range();
         assert!(min_m >= min, "Master min should be >= Junior min");
+    }
+
+    #[test]
+    fn synthetic_one_road_depots_have_matching_series() {
+        let network_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("data")
+            .join("networks")
+            .join("synthetic_one_road_88_05.json");
+        let json = std::fs::read_to_string(network_path).expect("synthetic network should exist");
+        let network = Network::from_json(&json).expect("synthetic network should parse");
+        let series_defs = default_loco_series();
+
+        for depot_id in network.roads.values().flat_map(|road| road.depots.iter()) {
+            assert!(
+                series_defs
+                    .iter()
+                    .any(|series| series.depot_ids.contains(depot_id)),
+                "Depot {depot_id} must have at least one matching loco series"
+            );
+        }
+    }
+
+    #[test]
+    fn scenario_document_accepts_bare_config_json() {
+        let json = r#"{
+            "crew_count": 12,
+            "loco_count": 6,
+            "seed": 42,
+            "duration_days": 7,
+            "shift_spread_min": 30,
+            "night_shift_ratio": 0.3,
+            "allowed_depot_ids": ["SD-1"],
+            "allowed_leg_ids": ["LEG-01"]
+        }"#;
+
+        let doc = ScenarioDocument::from_json(json).expect("bare config should parse");
+        assert_eq!(doc.schema, SCENARIO_SCHEMA_V1);
+        assert_eq!(doc.config.crew_count, 12);
+        assert_eq!(doc.config.allowed_depot_ids, vec!["SD-1"]);
+    }
+
+    #[test]
+    fn scenario_document_accepts_versioned_json() {
+        let json = r#"{
+            "schema": "rzd-des-scenario/v1",
+            "name": "one-road-shoulder-a",
+            "description": "Synthetic western shoulder month",
+            "config": {
+                "crew_count": 60,
+                "loco_count": 30,
+                "seed": 20260708,
+                "duration_days": 30,
+                "shift_spread_min": 30,
+                "night_shift_ratio": 0.3,
+                "allowed_depot_ids": ["SD-1", "SD-2", "TD-72"],
+                "allowed_leg_ids": ["LEG-01", "LEG-02", "LEG-03"]
+            }
+        }"#;
+
+        let doc = ScenarioDocument::from_json(json).expect("versioned contract should parse");
+        assert_eq!(doc.schema, SCENARIO_SCHEMA_V1);
+        assert_eq!(doc.name.as_deref(), Some("one-road-shoulder-a"));
+        assert_eq!(doc.config.loco_count, 30);
+    }
+
+    #[test]
+    fn scenario_document_rejects_unknown_schema() {
+        let json = r#"{
+            "schema": "rzd-des-scenario/v99",
+            "config": {
+                "crew_count": 1,
+                "loco_count": 1,
+                "seed": 1,
+                "duration_days": 1
+            }
+        }"#;
+
+        let err = ScenarioDocument::from_json(json).expect_err("unknown schema must fail");
+        assert!(err.contains("unsupported scenario schema"));
+    }
+
+    #[test]
+    fn scenario_document_new_sets_expected_schema() {
+        let doc = ScenarioDocument::new(ScenarioConfig::default());
+        assert_eq!(doc.schema, SCENARIO_SCHEMA_V1);
     }
 }

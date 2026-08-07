@@ -1,0 +1,41 @@
+{
+  "schema": "rzd-des-injection-plan/v1",
+  "events": [
+    {
+      "kind": "manual_violation",
+      "time": 180,
+      "crew_id": "CREW-0001",
+      "loco_id": "LOCO-0001",
+      "segment_id": "SEG-001",
+      "violation_type": "AcceptanceDelay",
+      "severity": "Warning",
+      "description": "Synthetic acceptance delay for replayable benchmark scenario",
+      "norm_reference": "SYNTH-NORM-01"
+    },
+    {
+      "kind": "failure_window",
+      "time": 240,
+      "crew_id": "CREW-0002",
+      "loco_id": "LOCO-0002",
+      "segment_id": "SEG-003",
+      "failure_kind": "PantographFault",
+      "duration_min": 35
+    },
+    {
+      "kind": "voltage_sag_window",
+      "time": 300,
+      "crew_id": "CREW-0003",
+      "loco_id": "LOCO-0003",
+      "segment_id": "SEG-002",
+      "voltage_v": 22000,
+      "duration_min": 20
+    },
+    {
+      "kind": "wait_window",
+      "time": 360,
+      "crew_id": "CREW-0004",
+      "loco_id": "LOCO-0004",
+      "duration_min": 25
+    }
+  ]
+}

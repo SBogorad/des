@@ -1,0 +1,31 @@
+name: Visualization
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'visualization/**'
+      - '.github/workflows/visualization.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'visualization/**'
+      - '.github/workflows/visualization.yml'
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: visualization
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: visualization/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/visualization-preview.log 2>&1 &
+      - run: sleep 3 && npm run smoke:local

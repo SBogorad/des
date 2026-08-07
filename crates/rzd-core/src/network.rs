@@ -1,7 +1,7 @@
+use crate::norms::RegionNormsConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
-use crate::norms::RegionNormsConfig;
 
 pub type StationId = String;
 pub type SegmentId = String;
@@ -24,6 +24,8 @@ pub enum NetworkError {
     OrphanLeg(String),
     #[error("Orphan station {0}: not referenced by any road or leg")]
     OrphanStation(String),
+    #[error("Validation failed: {0}")]
+    ValidationFailed(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +91,7 @@ pub struct Road {
     pub region_multiplier: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Network {
     pub stations: HashMap<StationId, Station>,
     pub segments: HashMap<SegmentId, Segment>,
@@ -146,8 +148,12 @@ impl Network {
 
         let errors = network.validate();
         if !errors.is_empty() {
-            let msg = errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n");
-            return Err(NetworkError::MissingStation(msg));
+            let msg = errors
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(NetworkError::ValidationFailed(msg));
         }
 
         Ok(network)
@@ -165,6 +171,13 @@ impl Network {
                 .or_default()
                 .push((seg.from.clone(), seg_id.clone()));
         }
+        for neighbors in self.adjacency.values_mut() {
+            neighbors.sort_unstable();
+        }
+    }
+
+    pub fn refresh_derived_state(&mut self) {
+        self.build_adjacency();
     }
 
     pub fn get_neighbors(&self, station_id: &StationId) -> Vec<(&StationId, &SegmentId)> {
@@ -236,15 +249,24 @@ impl Network {
     }
 
     /// Dijkstra shortest path (by weighted travel time in minutes)
-    pub fn shortest_path_dijkstra(&self, from: &StationId, to: &StationId) -> Option<(Vec<SegmentId>, f32)> {
+    pub fn shortest_path_dijkstra(
+        &self,
+        from: &StationId,
+        to: &StationId,
+    ) -> Option<(Vec<SegmentId>, f32)> {
         use std::collections::BinaryHeap;
 
         if from == to {
             return Some((Vec::new(), 0.0));
         }
 
-        let station_ids: Vec<&StationId> = self.stations.keys().collect();
-        let id_to_idx: HashMap<&StationId, usize> = station_ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+        let mut station_ids: Vec<&StationId> = self.stations.keys().collect();
+        station_ids.sort_unstable();
+        let id_to_idx: HashMap<&StationId, usize> = station_ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (*id, i))
+            .collect();
 
         let start_idx = *id_to_idx.get(from)?;
         let end_idx = *id_to_idx.get(to)?;
@@ -252,15 +274,16 @@ impl Network {
         let mut dist: Vec<f32> = vec![f32::INFINITY; station_ids.len()];
         let mut prev: Vec<Option<(usize, String)>> = vec![None; station_ids.len()];
 
-        // Min-heap: (cost, station) — reversed comparison for min-heap
-        let mut heap: BinaryHeap<(u64, usize)> = BinaryHeap::new();
+        // BinaryHeap is a max-heap. Reverse gives deterministic min-cost ordering,
+        // with the station index as a stable tie-breaker.
+        let mut heap: BinaryHeap<std::cmp::Reverse<(u32, usize)>> = BinaryHeap::new();
 
         dist[start_idx] = 0.0;
         // Pack float bits into u64 for ordering (NaN-safe)
-        heap.push((0.0f32.to_bits() as u64, start_idx));
+        heap.push(std::cmp::Reverse((0.0f32.to_bits(), start_idx)));
 
-        while let Some((cost_bits, u)) = heap.pop() {
-            let cost = f32::from_bits(cost_bits as u32);
+        while let Some(std::cmp::Reverse((cost_bits, u))) = heap.pop() {
+            let cost = f32::from_bits(cost_bits);
             if u == end_idx {
                 break;
             }
@@ -277,7 +300,7 @@ impl Network {
                         if next_cost < dist[v_idx] {
                             dist[v_idx] = next_cost;
                             prev[v_idx] = Some((u, seg_id.clone()));
-                            heap.push((next_cost.to_bits() as u64, v_idx));
+                            heap.push(std::cmp::Reverse((next_cost.to_bits(), v_idx)));
                         }
                     }
                 }
@@ -320,12 +343,18 @@ impl Network {
 
         for seg in self.segments.values() {
             if !self.stations.contains_key(&seg.from) {
-                errors.push(NetworkError::OrphanSegment(seg.from.clone(), seg.to.clone()));
+                errors.push(NetworkError::OrphanSegment(
+                    seg.from.clone(),
+                    seg.to.clone(),
+                ));
             } else {
                 referenced_stations.insert(seg.from.clone());
             }
             if !self.stations.contains_key(&seg.to) {
-                errors.push(NetworkError::OrphanSegment(seg.from.clone(), seg.to.clone()));
+                errors.push(NetworkError::OrphanSegment(
+                    seg.from.clone(),
+                    seg.to.clone(),
+                ));
             } else {
                 referenced_stations.insert(seg.to.clone());
             }
@@ -382,4 +411,23 @@ struct RawNetwork {
     legs: HashMap<LegId, Leg>,
     roads: HashMap<RoadId, Road>,
     region_norms: Option<RegionNormsConfig>,
+}
+
+impl<'de> Deserialize<'de> for Network {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawNetwork::deserialize(deserializer)?;
+        let mut network = Network {
+            stations: raw.stations,
+            segments: raw.segments,
+            legs: raw.legs,
+            roads: raw.roads,
+            adjacency: HashMap::new(),
+            region_norms: raw.region_norms.unwrap_or_default(),
+        };
+        network.build_adjacency();
+        Ok(network)
+    }
 }

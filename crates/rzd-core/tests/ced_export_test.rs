@@ -1,7 +1,7 @@
+use rzd_core::events::ViolationType;
 use rzd_core::export::build_ced_export;
 use rzd_core::tu3::Tu3Row;
-use rzd_core::violations::{Violation, Severity};
-use rzd_core::events::ViolationType;
+use rzd_core::violations::{Severity, Violation};
 
 fn make_test_tu3_rows() -> Vec<Tu3Row> {
     vec![
@@ -98,9 +98,21 @@ fn test_ced_events_generated() {
 
     let ced = build_ced_export(&rows, &violations);
 
-    let fail_events = ced.events.iter().filter(|e| e.factor == "Отказ ТМЦ").count();
-    let volt_events = ced.events.iter().filter(|e| e.factor == "Просадка КС").count();
-    let wait_events = ced.events.iter().filter(|e| e.factor == "Ожидание поезда").count();
+    let fail_events = ced
+        .events
+        .iter()
+        .filter(|e| e.factor == "Отказ ТМЦ")
+        .count();
+    let volt_events = ced
+        .events
+        .iter()
+        .filter(|e| e.factor == "Просадка КС")
+        .count();
+    let wait_events = ced
+        .events
+        .iter()
+        .filter(|e| e.factor == "Ожидание поезда")
+        .count();
 
     assert_eq!(fail_events, 1);
     assert_eq!(volt_events, 1);

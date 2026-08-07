@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07151b" />
+    <meta name="description" content="DES — дискретно-событийное моделирование эксплуатационной деятельности. Сценарии движения, работы бригад и использования локомотивов в цифровой модели." />
+    <title>DES · Дискретно-событийное моделирование — Syntog</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#demo">Перейти к демо</a>
+    <header class="site-header shell">
+      <a class="brand" href="/" aria-label="DES Syntog">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><b>DES</b><small>Syntog · simulation lab</small></span>
+      </a>
+      <nav class="nav" aria-label="Основная навигация">
+        <a href="#method">Метод</a>
+        <a href="#scenario">Сценарий</a>
+        <a href="#architecture">Контур</a>
+      </nav>
+      <a class="header-cta" href="/demo/?crew=CREW-0004&mode=presentation">Открыть демо <span>↗</span></a>
+    </header>
+
+    <main>
+      <section class="hero shell">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> Discrete-event simulation</p>
+          <h1>Моделируем не картинку, а <em>ход событий.</em></h1>
+          <p class="hero-lead">DES превращает эксплуатационную деятельность в воспроизводимую цифровую модель: события меняют состояния, состояния показывают ограничения, а сценарии помогают проверить решение до его внедрения.</p>
+          <div class="hero-actions" id="demo">
+            <a class="button button-primary" href="/demo/?crew=CREW-0004&mode=presentation"><span class="play-icon">▶</span> Запустить сценарий</a>
+            <a class="button button-secondary" href="#method">Как это устроено <span>↓</span></a>
+          </div>
+          <div class="hero-meta"><span><b>01</b> синтетический контур</span><span><b>02</b> воспроизводимый seed</span><span><b>03</b> what-if решение</span></div>
+        </div>
+        <div class="hero-visual" aria-label="Схема дискретно-событийной модели">
+          <div class="visual-top"><span>MODEL / CREW ROTATION</span><b>RUNNING <i></i></b></div>
+          <div class="network-board">
+            <div class="board-grid"></div>
+            <div class="route route-one"><i></i><i></i><i></i><i></i></div>
+            <div class="route route-two"><i></i><i></i><i></i></div>
+            <div class="station station-a"><b>Брегальдо</b><span>DEPOT</span></div>
+            <div class="station station-b"><b>Гранвидад</b><span>CONTROL POINT</span></div>
+            <div class="station station-c"><b>Иркивальди</b><span>NETWORK NODE</span></div>
+            <div class="train"><span>●</span> CREW-0004</div>
+            <div class="event-bubble"><b>EVENT</b><span>workload review</span><strong>02</strong></div>
+          </div>
+          <div class="visual-footer"><span>t = DAY 3 · 12:54</span><span>25 crews / 50 trips</span><span class="signal">● scenario stable</span></div>
+        </div>
+      </section>
+
+      <section class="signal-strip"><div class="shell signal-grid"><div><b>Событие</b><span>Приёмка, отправление, прибытие, оборот</span></div><div><b>Состояние</b><span>Ресурс, бригада, локомотив, участок</span></div><div><b>Решение</b><span>Резерв, график, ограничение, эффект</span></div><div class="signal-accent"><b>→</b><span>Проверяем до действия</span></div></div></section>
+
+      <section class="light-section" id="method">
+        <div class="shell">
+          <div class="section-heading"><div><p class="eyebrow dark"><span></span> Метод</p><h2>События — атом модели.</h2></div><p>Вместо усреднённой статистики DES сохраняет порядок и время происходящего. Поэтому можно увидеть не только факт нарушения, но и момент, участок и управляемое следствие.</p></div>
+          <div class="method-grid">
+            <article><span class="step-number">01</span><h3>Событие</h3><p>Система фиксирует действие во времени: бригада приступила к смене, поезд отправился, локомотив прибыл на контрольную станцию.</p><div class="code-line">departure_time → 11:24</div></article>
+            <article><span class="step-number">02</span><h3>Переход</h3><p>Событие меняет состояние ресурсов и запускает следующий участок сценария. Модель остаётся детерминированной и проверяемой.</p><div class="code-line">crew.status = TRAVELING</div></article>
+            <article><span class="step-number">03</span><h3>Сценарий</h3><p>Мы проигрываем базовый ход и what-if вариант, чтобы сравнить последствия решения на той же временной шкале.</p><div class="code-line">seed: 8805 / replay: ready</div></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="scenario-section" id="scenario">
+        <div class="shell scenario-layout"><div class="scenario-copy"><p class="eyebrow"><span></span> Сценарий показа</p><h2>От маршрута к решению за один replay.</h2><p>Детерминированный сценарий показывает работу 25 бригад и 50 поездок. В нём система находит критический случай, объясняет точку контроля и моделирует назначение резерва.</p><a class="text-link" href="/demo/?crew=CREW-0004&mode=investigation">Открыть рабочий режим <span>↗</span></a></div><div class="timeline-card"><div class="timeline-head"><span>REPLAY / CREW-0004</span><b>DAY 3</b></div><div class="timeline"><div class="timeline-item done"><i>✓</i><div><b>Подготовка</b><span>Брегальдо · 10:51</span></div></div><div class="timeline-item active"><i>●</i><div><b>Поездка</b><span>Брегальдо → Гранвидад · 11:24</span></div><strong>LIVE</strong></div><div class="timeline-item alert"><i>!</i><div><b>Контрольная точка</b><span>Рабочее время требует проверки</span></div><strong>EVENT</strong></div><div class="timeline-item"><i>○</i><div><b>What-if</b><span>Резервная бригада на следующем плече</span></div></div></div><div class="timeline-result"><span>PREVENTABLE RISK</span><b>до 42 мин</b><small>синтетический эффект решения</small></div></div></div>
+      </section>
+
+      <section class="proof-section"><div class="shell"><div class="proof-header"><p class="eyebrow"><span></span> Доказательная база</p><h2>Сценарий, который можно повторить.</h2></div><div class="proof-grid"><div><strong>25</strong><span>бригад в модели</span></div><div><strong>50</strong><span>поездок в сценарии</span></div><div><strong>3</strong><span>случая требуют проверки</span></div><div><strong>1</strong><span>контрольный replay</span></div></div><div class="proof-note"><span class="lock">◈</span><p><b>Синтетические данные</b> Публичный контур предназначен для демонстрации метода. Идентификаторы, станции, маршруты и показатели воспроизводимы, но не являются производственными данными.</p></div></div></section>
+
+      <section class="architecture-section" id="architecture"><div class="shell"><div class="section-heading"><div><p class="eyebrow dark"><span></span> Экосистема</p><h2>DES — слой проверки решений.</h2></div><p>Он связывает подготовленные данные и operational workflow, не подменяя ни ETL, ни ЦЭД. Каждый контур отвечает за свою границу доверия.</p></div><div class="architecture-grid"><article class="etl-card"><span>01 / INPUT</span><h3>Offline ETL</h3><p>Локально читает и нормализует Excel, готовит безопасные агрегаты.</p><a href="https://etl.syntog.ru">etl.syntog.ru ↗</a></article><article class="des-card"><span>02 / MODEL</span><h3>DES Engine</h3><p>Проигрывает события, ресурсы, маршруты и what-if сценарии.</p><b>des.syntog.ru</b></article><article class="ced-card"><span>03 / WORKFLOW</span><h3>ЦЭД</h3><p>Связывает сигнал с ролями, объяснением, решением и аудитом.</p><a href="https://ced.syntog.ru">ced.syntog.ru ↗</a></article></div></div></section>
+    </main>
+
+    <footer class="site-footer"><div class="shell footer-inner"><div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><b>DES</b><small>Discrete-event simulation · Syntog</small></span></div><div class="footer-links"><a href="https://syntog.ru">Syntog</a><a href="https://ced.syntog.ru">ЦЭД</a><a href="https://etl.syntog.ru">Offline ETL</a><a href="/demo/">Демо ↗</a></div></div></footer>
+  </body>
+</html>

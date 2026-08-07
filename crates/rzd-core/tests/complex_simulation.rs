@@ -1,7 +1,7 @@
 use rzd_core::engine::Engine;
-use rzd_core::network::{Network, Station, StationKind, VoltageKind, Segment};
-use rzd_core::entities::{Crew, Locomotive, LocoKind, LocoState};
-use rzd_core::events::{SimEvent, EventKind};
+use rzd_core::entities::{Crew, LocoKind, LocoState, Locomotive};
+use rzd_core::events::{EventKind, SimEvent};
+use rzd_core::network::{Network, Segment, Station, StationKind, VoltageKind};
 use std::collections::HashMap;
 
 #[test]
@@ -12,41 +12,52 @@ fn test_complex_synthetic_run() {
     // Generate 10 stations
     for i in 1..=10 {
         let id = format!("ST-{:03}", i);
-        stations.insert(id.clone(), Station {
-            id: id.clone(),
-            name: format!("Station {}", i),
-            kind: if i == 1 { StationKind::MainDepot } else if i == 10 { StationKind::Terminal } else { StationKind::Waypoint },
-            region: "NORTH".to_string(),
-            coords: None,
-            depot_id: if i == 1 { Some("DEP-01".to_string()) } else { None },
-            voltage_kv: VoltageKind::DC3000,
-            electrification: true,
-        });
+        stations.insert(
+            id.clone(),
+            Station {
+                id: id.clone(),
+                name: format!("Station {}", i),
+                kind: if i == 1 {
+                    StationKind::MainDepot
+                } else if i == 10 {
+                    StationKind::Terminal
+                } else {
+                    StationKind::Waypoint
+                },
+                region: "NORTH".to_string(),
+                coords: None,
+                depot_id: if i == 1 {
+                    Some("DEP-01".to_string())
+                } else {
+                    None
+                },
+                voltage_kv: VoltageKind::DC3000,
+                electrification: true,
+            },
+        );
 
         if i > 1 {
             let from = format!("ST-{:03}", i - 1);
             let to = format!("ST-{:03}", i);
             let seg_id = format!("SEG-{:03}", i - 1);
-            segments.insert(seg_id.clone(), Segment {
-                id: seg_id,
-                from,
-                to,
-                distance_km: 50.0,
-                base_speed_kmh: 80.0,
-                gradient_factor: 1.0,
-                failure_base_rate: 0.001,
-                voltage_sag_prob: 0.01,
-                single_track: false,
-            });
+            segments.insert(
+                seg_id.clone(),
+                Segment {
+                    id: seg_id,
+                    from,
+                    to,
+                    distance_km: 50.0,
+                    base_speed_kmh: 80.0,
+                    gradient_factor: 1.0,
+                    failure_base_rate: 0.001,
+                    voltage_sag_prob: 0.01,
+                    single_track: false,
+                },
+            );
         }
     }
 
-    let network = Network::new(
-        stations,
-        segments,
-        HashMap::new(),
-        HashMap::new(),
-    );
+    let network = Network::new(stations, segments, HashMap::new(), HashMap::new());
 
     let mut engine = Engine::new(network, 42);
 
@@ -87,12 +98,17 @@ fn test_complex_synthetic_run() {
             mileage_km: 0.0,
             hours_since_to: 0.0,
             failures_total: 0,
+            inventory_number: 500 + i as u32 * 10,
+            manufacture_year: 2020,
         });
     }
 
     // Run for 24 hours (1440 min)
     engine.run(1440);
 
-    println!("Simulation finished. TU-3 Rows generated: {}", engine.tu3_rows.len());
+    println!(
+        "Simulation finished. TU-3 Rows generated: {}",
+        engine.tu3_rows.len()
+    );
     assert!(!engine.tu3_rows.is_empty());
 }

@@ -2,6 +2,7 @@ target/
 pkg/
 node_modules/
 dist/
+out/
 .env
 *.wasm
 .DS_Store
@@ -10,4 +11,8 @@ dist/
 idea/
 .vscode/
 *.log
-pnpm-lock.yaml
+
+_audit_test*.log
+ts-host/package-lock.json
+stats-syntog-landing.html
+visualization/viz-screenshot.png

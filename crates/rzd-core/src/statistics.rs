@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct RunningStats {
     count: u64,
     mean: f64,
@@ -11,7 +11,13 @@ pub struct RunningStats {
 
 impl RunningStats {
     pub fn new() -> Self {
-        Self { count: 0, mean: 0.0, m2: 0.0, min: f64::INFINITY, max: f64::NEG_INFINITY }
+        Self {
+            count: 0,
+            mean: 0.0,
+            m2: 0.0,
+            min: f64::INFINITY,
+            max: f64::NEG_INFINITY,
+        }
     }
 
     pub fn update(&mut self, value: f64) {
@@ -20,17 +26,33 @@ impl RunningStats {
         self.mean += delta / self.count as f64;
         let delta2 = value - self.mean;
         self.m2 += delta * delta2;
-        if value < self.min { self.min = value; }
-        if value > self.max { self.max = value; }
+        if value < self.min {
+            self.min = value;
+        }
+        if value > self.max {
+            self.max = value;
+        }
     }
 
-    pub fn count(&self) -> u64 { self.count }
-    pub fn mean(&self) -> f64 { self.mean }
-    pub fn min(&self) -> f64 { self.min }
-    pub fn max(&self) -> f64 { self.max }
+    pub fn count(&self) -> u64 {
+        self.count
+    }
+    pub fn mean(&self) -> f64 {
+        self.mean
+    }
+    pub fn min(&self) -> f64 {
+        self.min
+    }
+    pub fn max(&self) -> f64 {
+        self.max
+    }
 
     pub fn variance(&self) -> f64 {
-        if self.count < 2 { 0.0 } else { self.m2 / (self.count - 1) as f64 }
+        if self.count < 2 {
+            0.0
+        } else {
+            self.m2 / (self.count - 1) as f64
+        }
     }
 
     pub fn std_dev(&self) -> f64 {
@@ -41,6 +63,47 @@ impl RunningStats {
 impl Default for RunningStats {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct RunningStatsSerde {
+    count: u64,
+    mean: f64,
+    m2: f64,
+    min: Option<f64>,
+    max: Option<f64>,
+}
+
+impl Serialize for RunningStats {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        RunningStatsSerde {
+            count: self.count,
+            mean: self.mean,
+            m2: self.m2,
+            min: self.min.is_finite().then_some(self.min),
+            max: self.max.is_finite().then_some(self.max),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for RunningStats {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RunningStatsSerde::deserialize(deserializer)?;
+        Ok(Self {
+            count: raw.count,
+            mean: raw.mean,
+            m2: raw.m2,
+            min: raw.min.unwrap_or(f64::INFINITY),
+            max: raw.max.unwrap_or(f64::NEG_INFINITY),
+        })
     }
 }
 
@@ -55,7 +118,13 @@ pub struct TimeWeightedAverage {
 
 impl TimeWeightedAverage {
     pub fn new() -> Self {
-        Self { area: 0.0, last_change: 0.0, last_value: 0.0, total_time: 0.0, initialized: false }
+        Self {
+            area: 0.0,
+            last_change: 0.0,
+            last_value: 0.0,
+            total_time: 0.0,
+            initialized: false,
+        }
     }
 
     pub fn update(&mut self, current_time: f64, new_value: f64) {
@@ -70,7 +139,11 @@ impl TimeWeightedAverage {
     }
 
     pub fn average(&self) -> f64 {
-        if self.total_time <= 0.0 { 0.0 } else { self.area / self.total_time }
+        if self.total_time <= 0.0 {
+            0.0
+        } else {
+            self.area / self.total_time
+        }
     }
 
     pub fn current(&self) -> f64 {
@@ -100,12 +173,17 @@ pub struct HistogramBin {
 impl Histogram {
     pub fn new(min: f64, max: f64, num_bins: usize) -> Self {
         let bin_width = (max - min) / num_bins as f64;
-        let bins = (0..num_bins).map(|i| HistogramBin {
-            lower: min + i as f64 * bin_width,
-            upper: min + (i + 1) as f64 * bin_width,
-            count: 0,
-        }).collect();
-        Self { bins, total_count: 0 }
+        let bins = (0..num_bins)
+            .map(|i| HistogramBin {
+                lower: min + i as f64 * bin_width,
+                upper: min + (i + 1) as f64 * bin_width,
+                count: 0,
+            })
+            .collect();
+        Self {
+            bins,
+            total_count: 0,
+        }
     }
 
     pub fn update(&mut self, value: f64) {
@@ -135,9 +213,15 @@ impl Histogram {
         self.bins.last().map_or(0.0, |b| b.upper)
     }
 
-    pub fn p50(&self) -> f64 { self.percentile(50.0) }
-    pub fn p90(&self) -> f64 { self.percentile(90.0) }
-    pub fn p99(&self) -> f64 { self.percentile(99.0) }
+    pub fn p50(&self) -> f64 {
+        self.percentile(50.0)
+    }
+    pub fn p90(&self) -> f64 {
+        self.percentile(90.0)
+    }
+    pub fn p99(&self) -> f64 {
+        self.percentile(99.0)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

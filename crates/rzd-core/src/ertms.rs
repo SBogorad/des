@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::entities::{LocoId, SimTime};
 use crate::network::SegmentId;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EtcLevel {
@@ -46,10 +46,10 @@ pub struct TrainDataMessage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BrakingCategory {
-    G1,  // Goods train category 1
-    G2,  // Goods train category 2
-    P,   // Passenger
-    PP,  // High-speed passenger
+    G1, // Goods train category 1
+    G2, // Goods train category 2
+    P,  // Passenger
+    PP, // High-speed passenger
 }
 
 impl BrakingCategory {
@@ -197,7 +197,14 @@ impl ErtmsState {
         self.mode = EtcMode::StaffResponsible;
     }
 
-    pub fn request_movement_authority(&mut self, segment_id: SegmentId, end_km: f32, speed_kmh: f32, valid_until: SimTime, now: SimTime) {
+    pub fn request_movement_authority(
+        &mut self,
+        segment_id: SegmentId,
+        end_km: f32,
+        speed_kmh: f32,
+        valid_until: SimTime,
+        now: SimTime,
+    ) {
         self.movement_authority = Some(MovementAuthority {
             segment_id,
             end_position_km: end_km,
@@ -234,7 +241,8 @@ impl ErtmsState {
         let intervention = permitted * 1.10;
         let release = permitted * 0.75;
 
-        let _reaction_dist = current_speed_kmh / 3.6 * ErtmsConfig::default().reaction_time_s / 1000.0;
+        let _reaction_dist =
+            current_speed_kmh / 3.6 * ErtmsConfig::default().reaction_time_s / 1000.0;
 
         self.supervision = Some(SupervisionData {
             permitted_speed_kmh: permitted,
@@ -243,12 +251,23 @@ impl ErtmsState {
             target_distance_km: distance_to_end_km,
             target_speed_kmh: 0.0,
             release_speed_kmh: release,
-            location_based_service_active: self.level == EtcLevel::Level2 || self.level == EtcLevel::Level3,
+            location_based_service_active: self.level == EtcLevel::Level2
+                || self.level == EtcLevel::Level3,
         });
     }
 
-    pub fn update_position(&mut self, position_km: f32, speed_kmh: f32, segment_id: SegmentId, now: SimTime) {
-        let prev = self.last_position.as_ref().map(|p| p.position_km).unwrap_or(position_km);
+    pub fn update_position(
+        &mut self,
+        position_km: f32,
+        speed_kmh: f32,
+        segment_id: SegmentId,
+        now: SimTime,
+    ) {
+        let prev = self
+            .last_position
+            .as_ref()
+            .map(|p| p.position_km)
+            .unwrap_or(position_km);
         self.trip_distance_km += (position_km - prev).abs();
 
         self.last_position = Some(PositionReport {

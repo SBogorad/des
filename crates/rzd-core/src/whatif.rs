@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
 use crate::engine::Engine;
 use crate::network::Network;
 use crate::norms::RegionNorms;
-use crate::scenario::{ScenarioConfig, generate_scenario};
+use crate::scenario::{generate_scenario, ScenarioConfig};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WhatIfParams {
@@ -80,13 +80,19 @@ pub fn run_what_if(
         overtime_12h_delta: modified.overtime_12h_count as i32 - baseline.overtime_12h_count as i32,
         short_rest_delta: modified.short_rest_count as i32 - baseline.short_rest_count as i32,
         shift_change_pct: if baseline.total_shifts > 0 {
-            ((modified.total_shifts as f32 - baseline.total_shifts as f32) / baseline.total_shifts as f32) * 100.0
+            ((modified.total_shifts as f32 - baseline.total_shifts as f32)
+                / baseline.total_shifts as f32)
+                * 100.0
         } else {
             0.0
         },
     };
 
-    WhatIfResult { baseline, modified, changes }
+    WhatIfResult {
+        baseline,
+        modified,
+        changes,
+    }
 }
 
 fn run_simulation(network: &Network, config: &ScenarioConfig, duration_min: u64) -> WhatIfMetrics {
@@ -132,7 +138,9 @@ fn run_simulation_with_params(
     }
     if let Some(ref overrides) = params.region_overrides {
         for override_norms in overrides {
-            eng.network.region_norms.add(override_norms.region_id.clone(), override_norms.clone());
+            eng.network
+                .region_norms
+                .add(override_norms.region_id.clone(), override_norms.clone());
         }
     }
 
@@ -146,9 +154,18 @@ fn run_simulation_with_params(
         crews: scenario.crews.len(),
         locos: scenario.locos.len(),
         total_violations: violations,
-        overtime_8h_count: *vsummary.by_type.get(&crate::events::ViolationType::Overtime8h).unwrap_or(&0) as usize,
-        overtime_12h_count: *vsummary.by_type.get(&crate::events::ViolationType::Overtime12h).unwrap_or(&0) as usize,
-        short_rest_count: *vsummary.by_type.get(&crate::events::ViolationType::ShortRest).unwrap_or(&0) as usize,
+        overtime_8h_count: *vsummary
+            .by_type
+            .get(&crate::events::ViolationType::Overtime8h)
+            .unwrap_or(&0) as usize,
+        overtime_12h_count: *vsummary
+            .by_type
+            .get(&crate::events::ViolationType::Overtime12h)
+            .unwrap_or(&0) as usize,
+        short_rest_count: *vsummary
+            .by_type
+            .get(&crate::events::ViolationType::ShortRest)
+            .unwrap_or(&0) as usize,
         tu3_rows: eng.tu3_rows.len(),
         total_shifts: eng.stats.total_shifts_completed as u32,
         avg_shift_min: 0.0,
@@ -158,8 +175,8 @@ fn run_simulation_with_params(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::{Leg, Road, Segment, Station, StationKind, VoltageKind};
     use std::collections::HashMap;
-    use crate::network::{Station, Segment, Leg, Road, StationKind, VoltageKind};
 
     fn test_network() -> Network {
         let mut stations = HashMap::new();
@@ -169,51 +186,76 @@ mod tests {
 
         for i in 1..=5 {
             let id = format!("ST-{:03}", i);
-            stations.insert(id.clone(), Station {
-                id: id.clone(),
-                name: format!("Station {}", i),
-                kind: if i == 1 { StationKind::MainDepot }
-                       else if i == 5 { StationKind::Terminal }
-                       else { StationKind::Waypoint },
-                region: "NORTH".to_string(),
-                coords: None,
-                depot_id: if i == 1 { Some("DEP-01".to_string()) } else { None },
-                voltage_kv: VoltageKind::DC3000,
-                electrification: true,
-            });
+            stations.insert(
+                id.clone(),
+                Station {
+                    id: id.clone(),
+                    name: format!("Station {}", i),
+                    kind: if i == 1 {
+                        StationKind::MainDepot
+                    } else if i == 5 {
+                        StationKind::Terminal
+                    } else {
+                        StationKind::Waypoint
+                    },
+                    region: "NORTH".to_string(),
+                    coords: None,
+                    depot_id: if i == 1 {
+                        Some("DEP-01".to_string())
+                    } else {
+                        None
+                    },
+                    voltage_kv: VoltageKind::DC3000,
+                    electrification: true,
+                },
+            );
             if i > 1 {
-                segments.insert(format!("SEG-{:03}", i - 1), Segment {
-                    id: format!("SEG-{:03}", i - 1),
-                    from: format!("ST-{:03}", i - 1),
-                    to: id,
-                    distance_km: 50.0,
-                    base_speed_kmh: 80.0,
-                    gradient_factor: 1.0,
-                    failure_base_rate: 0.001,
-                    voltage_sag_prob: 0.01,
-                    single_track: false,
-                });
+                segments.insert(
+                    format!("SEG-{:03}", i - 1),
+                    Segment {
+                        id: format!("SEG-{:03}", i - 1),
+                        from: format!("ST-{:03}", i - 1),
+                        to: id,
+                        distance_km: 50.0,
+                        base_speed_kmh: 80.0,
+                        gradient_factor: 1.0,
+                        failure_base_rate: 0.001,
+                        voltage_sag_prob: 0.01,
+                        single_track: false,
+                    },
+                );
             }
         }
 
-        legs.insert("LEG-01".to_string(), Leg {
-            id: "LEG-01".into(),
-            name: "Test".into(),
-            from_depot: "DEP-01".into(),
-            to_depot: "DEP-01".into(),
-            segments: vec!["SEG-001".into(), "SEG-002".into(), "SEG-003".into(), "SEG-004".into()],
-            total_km: 200.0,
-            road_id: "RD-01".into(),
-        });
+        legs.insert(
+            "LEG-01".to_string(),
+            Leg {
+                id: "LEG-01".into(),
+                name: "Test".into(),
+                from_depot: "DEP-01".into(),
+                to_depot: "DEP-01".into(),
+                segments: vec![
+                    "SEG-001".into(),
+                    "SEG-002".into(),
+                    "SEG-003".into(),
+                    "SEG-004".into(),
+                ],
+                total_km: 200.0,
+                road_id: "RD-01".into(),
+            },
+        );
 
-        roads.insert("RD-01".to_string(), Road {
-            id: "RD-01".into(),
-            name: "Test Road".into(),
-            stations: (1..=5).map(|i| format!("ST-{:03}", i)).collect(),
-            depots: vec!["DEP-01".into()],
-            legs: vec!["LEG-01".into()],
-            region_multiplier: 1.0,
-        });
+        roads.insert(
+            "RD-01".to_string(),
+            Road {
+                id: "RD-01".into(),
+                name: "Test Road".into(),
+                stations: (1..=5).map(|i| format!("ST-{:03}", i)).collect(),
+                depots: vec!["DEP-01".into()],
+                legs: vec!["LEG-01".into()],
+                region_multiplier: 1.0,
+            },
+        );
 
         Network::new(stations, segments, legs, roads)
     }
@@ -221,7 +263,13 @@ mod tests {
     #[test]
     fn test_what_if_basic() {
         let net = test_network();
-        let config = ScenarioConfig { crew_count: 5, loco_count: 3, seed: 42, duration_days: 1, ..Default::default() };
+        let config = ScenarioConfig {
+            crew_count: 5,
+            loco_count: 3,
+            seed: 42,
+            duration_days: 1,
+            ..Default::default()
+        };
         let params = WhatIfParams::default();
 
         let result = run_what_if(&net, config, params, 60 * 24);
@@ -233,8 +281,17 @@ mod tests {
     #[test]
     fn test_what_if_more_crews() {
         let net = test_network();
-        let config = ScenarioConfig { crew_count: 5, loco_count: 3, seed: 42, duration_days: 1, ..Default::default() };
-        let params = WhatIfParams { crew_count_delta: 5, ..Default::default() };
+        let config = ScenarioConfig {
+            crew_count: 5,
+            loco_count: 3,
+            seed: 42,
+            duration_days: 1,
+            ..Default::default()
+        };
+        let params = WhatIfParams {
+            crew_count_delta: 5,
+            ..Default::default()
+        };
 
         let result = run_what_if(&net, config, params, 60 * 24);
         assert_eq!(result.baseline.crews, 5);
@@ -244,7 +301,13 @@ mod tests {
     #[test]
     fn test_what_if_custom_norms() {
         let net = test_network();
-        let config = ScenarioConfig { crew_count: 5, loco_count: 3, seed: 42, duration_days: 1, ..Default::default() };
+        let config = ScenarioConfig {
+            crew_count: 5,
+            loco_count: 3,
+            seed: 42,
+            duration_days: 1,
+            ..Default::default()
+        };
         let params = WhatIfParams {
             overtime_8h_override: Some(420),
             ..Default::default()
