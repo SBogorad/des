@@ -11,6 +11,7 @@ use std::collections::HashMap;
 pub struct Export;
 
 pub const EVENT_TRACE_SCHEMA_V1: &str = "rzd-des-event-trace/v1";
+pub const CED_EXPORT_SCHEMA_V1: &str = "rzd-des-ced-export/v1";
 
 /// Serialize JSON with object keys in lexical order for byte-stable artifacts.
 pub fn to_canonical_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
@@ -174,6 +175,7 @@ pub struct ReplayBundleInputs<'a> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CedExport {
+    pub schema: String,
     pub trips: Vec<CedTrip>,
     pub events: Vec<CedEvent>,
     pub violations: Vec<CedViolation>,
@@ -335,6 +337,7 @@ pub fn build_ced_export(tu3_rows: &[Tu3Row], violations: &[Violation]) -> CedExp
     };
 
     CedExport {
+        schema: CED_EXPORT_SCHEMA_V1.to_string(),
         trips,
         events,
         violations: ced_violations,

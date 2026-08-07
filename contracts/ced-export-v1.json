@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xodapi/des/contracts/ced-export-v1.json",
+  "title": "RZD DES CED export v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "trips", "events", "violations", "factors"],
+  "properties": {
+    "schema": { "const": "rzd-des-ced-export/v1" },
+    "trips": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "crew_id", "route", "depot", "start_time", "end_time", "distance_km", "violations"],
+        "properties": {
+          "id": { "type": "string" },
+          "crew_id": { "type": "string" },
+          "route": { "type": "string" },
+          "depot": { "type": "string" },
+          "start_time": { "type": "string" },
+          "end_time": { "type": "string" },
+          "distance_km": { "type": "number" },
+          "violations": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+    "violations": { "type": "array", "items": { "$ref": "#/$defs/violation" } },
+    "factors": { "type": "array", "items": { "$ref": "#/$defs/factor" } }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trip_id", "shift", "segment", "factor", "responsible", "loss_hours", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "trip_id": { "type": "string" },
+        "shift": { "type": "integer", "minimum": 0 },
+        "segment": { "type": "string" },
+        "factor": { "type": "string" },
+        "responsible": { "type": "string" },
+        "loss_hours": { "type": "number" },
+        "status": { "type": "string" }
+      }
+    },
+    "violation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trip_id", "kind", "severity", "description", "norm_reference", "detected_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "trip_id": { "type": "string" },
+        "kind": { "type": "string" },
+        "severity": { "type": "string" },
+        "description": { "type": "string" },
+        "norm_reference": { "type": "string" },
+        "detected_at": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "factor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "percent", "owner"],
+      "properties": {
+        "name": { "type": "string" },
+        "percent": { "type": "number" },
+        "owner": { "type": "string" }
+      }
+    }
+  }
+}
