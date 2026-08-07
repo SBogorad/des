@@ -80,10 +80,22 @@ cd C:\project\sd\rzd-des-engine\visualization
 .\deploy-des.ps1 -HostAlias <ssh-alias> -RemoteDir <remote-directory>
 ```
 
-The deployment script requires an explicitly configured SSH alias and destination.
-It does not contain production hostnames, credentials, internal paths, or nginx
-configuration. It rebuilds the static site, copies the release, and verifies the
-landing and demo contract on the configured destination.
+The deployment script requires an explicitly configured SSH alias and destination
+root. The web server must serve the stable `<remote-directory>/current` symlink;
+server configuration is intentionally maintained outside this public repository.
+Each deployment uploads an immutable release directory, verifies
+`RELEASE-MANIFEST.txt`, atomically activates `current`, and retains the newest
+three releases.
+
+Rollback to a retained release:
+
+```powershell
+.\deploy-des.ps1 -HostAlias <ssh-alias> -RemoteDir <remote-directory> `
+  -RollbackReleaseId <release-id>
+```
+
+For a deployed HTTP smoke check, pass `-SmokeUrl <public-url>`; the script
+requires Content-Security-Policy and `X-Content-Type-Options: nosniff`.
 
 ## Production smoke check
 
