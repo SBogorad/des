@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "overrides": {
+    "esbuild": "0.25.0"
+  },
   "scripts": {
     "dev": "vite",
     "findings": "node generate-findings.mjs",
@@ -23,8 +26,8 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@types/three": "^0.167.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.5.3",
-    "vite": "^5.3.4"
+    "vite": "^7.3.6"
   }
 }
