@@ -1,0 +1,15 @@
+{
+  "schema": "rzd-des-scenario/v1",
+  "name": "synthetic-contract-fixture",
+  "description": "Synthetic cross-runtime contract fixture",
+  "config": {
+    "crew_count": 2,
+    "loco_count": 1,
+    "seed": 42,
+    "duration_days": 1,
+    "shift_spread_min": 30,
+    "night_shift_ratio": 0.3,
+    "allowed_depot_ids": ["DEPOT-0001"],
+    "allowed_leg_ids": ["LEG-0001"]
+  }
+}

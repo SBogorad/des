@@ -654,4 +654,26 @@ mod tests {
         let doc = ScenarioDocument::new(ScenarioConfig::default());
         assert_eq!(doc.schema, SCENARIO_SCHEMA_V1);
     }
+
+    #[test]
+    fn scenario_document_round_trips_shared_contract_fixture() {
+        let fixture = include_str!("../../../contracts/scenario-v1.fixture.json");
+        let document = ScenarioDocument::from_json(fixture).expect("shared fixture should parse");
+        let encoded = serde_json::to_string(&document).expect("document should serialize");
+        let reparsed =
+            ScenarioDocument::from_json(&encoded).expect("serialized document should parse");
+        assert_eq!(reparsed.schema, document.schema);
+        assert_eq!(reparsed.name, document.name);
+        assert_eq!(reparsed.description, document.description);
+        assert_eq!(reparsed.config.crew_count, document.config.crew_count);
+        assert_eq!(reparsed.config.loco_count, document.config.loco_count);
+        assert_eq!(reparsed.config.seed, document.config.seed);
+        assert_eq!(reparsed.config.duration_days, document.config.duration_days);
+        assert_eq!(reparsed.config.allowed_depot_ids, document.config.allowed_depot_ids);
+        assert_eq!(reparsed.config.allowed_leg_ids, document.config.allowed_leg_ids);
+        assert_eq!(
+            reparsed.config.night_shift_ratio,
+            document.config.night_shift_ratio
+        );
+    }
 }

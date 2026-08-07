@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xodapi/des/contracts/scenario-v1.json",
+  "title": "RZD DES scenario document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "config"],
+  "properties": {
+    "schema": { "const": "rzd-des-scenario/v1" },
+    "name": { "type": ["string", "null"] },
+    "description": { "type": ["string", "null"] },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["crew_count", "loco_count", "seed", "duration_days"],
+      "properties": {
+        "crew_count": { "type": "integer", "minimum": 0 },
+        "loco_count": { "type": "integer", "minimum": 0 },
+        "seed": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "duration_days": { "type": "integer", "minimum": 0 },
+        "shift_spread_min": { "type": "integer", "minimum": 0 },
+        "night_shift_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "allowed_depot_ids": { "type": "array", "items": { "type": "string" } },
+        "allowed_leg_ids": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}
