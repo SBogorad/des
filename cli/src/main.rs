@@ -1,7 +1,7 @@
 use clap::Parser;
 use rzd_core::engine::{Engine, EngineSnapshot};
 use rzd_core::events::ViolationType;
-use rzd_core::export::{build_replay_bundle, Export, ReplayBundleInputs};
+use rzd_core::export::{build_replay_bundle, to_canonical_json, Export, ReplayBundleInputs};
 use rzd_core::injection::{InjectedEvent, InjectionPlan};
 use rzd_core::network::Network;
 use rzd_core::scenario::{generate_scenario, ScenarioConfig, ScenarioDocument};
@@ -656,7 +656,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     tu3_rows: &engine.tu3_rows,
                     ced: &ced,
                 });
-                serde_json::to_string_pretty(&bundle)?
+                to_canonical_json(&bundle)?
             } else {
                 render_engine_output(&engine, &format, seed, warmup, days)?
             };
@@ -1053,7 +1053,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 inject,
             })?;
             engine.run(checkpoint_minute);
-            let snapshot = serde_json::to_string_pretty(&engine.snapshot())?;
+            let snapshot = to_canonical_json(&engine.snapshot())?;
             std::fs::write(&output, snapshot)?;
             eprintln!(
                 "Checkpoint written to {} at minute {} ({} events, {} shifts)",
@@ -1095,10 +1095,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if let Some(snapshot_path) = snapshot_output {
-                std::fs::write(
-                    snapshot_path,
-                    serde_json::to_string_pretty(&engine.snapshot())?,
-                )?;
+                std::fs::write(snapshot_path, to_canonical_json(&engine.snapshot())?)?;
             }
 
             eprintln!(
@@ -1639,7 +1636,7 @@ fn render_engine_output(
         "json" => Export::tu3_to_json(&engine.tu3_rows)?,
         "ced" => serde_json::to_string_pretty(&engine.export_ced())?,
         "summary" => serde_json::to_string_pretty(&engine.violations_summary())?,
-        "snapshot" => serde_json::to_string_pretty(&engine.snapshot())?,
+        "snapshot" => to_canonical_json(&engine.snapshot())?,
         "trace" => Export::event_trace_to_json(&engine.export_event_trace())?,
         "trace-ndjson" => Export::events_to_ndjson(&engine.processed_events)?,
         "bundle" => {
@@ -1661,7 +1658,7 @@ fn render_engine_output(
                 tu3_rows: &engine.tu3_rows,
                 ced: &ced,
             });
-            serde_json::to_string_pretty(&bundle)?
+            to_canonical_json(&bundle)?
         }
         other => {
             return Err(format!(

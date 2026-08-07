@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rzd_core::export::{build_replay_bundle, CedExport, ReplayBundleInputs};
+use rzd_core::export::{build_replay_bundle, to_canonical_json, CedExport, ReplayBundleInputs};
 use rzd_core::network::{Leg, Network, Road, Segment, Station, StationKind, VoltageKind};
 use rzd_core::scenario::ScenarioConfig;
 use rzd_core::statistics::SimulationStats;
@@ -118,9 +118,22 @@ fn replay_bundle_serializes_versioned_run_contract() {
         ced: &ced,
     });
 
-    let text = serde_json::to_string_pretty(&bundle).expect("bundle JSON");
-    assert!(text.contains("\"schema\": \"rzd-des-replay-bundle/v1\""));
-    assert!(text.contains("\"seed\": 1234"));
-    assert!(text.contains("\"duration_days\": 7"));
-    assert!(text.contains("\"name\": \"rzd-des-engine\""));
+    let text = to_canonical_json(&bundle).expect("bundle JSON");
+    assert!(text.contains("\"schema\":\"rzd-des-replay-bundle/v1\""));
+    assert!(text.contains("\"seed\":1234"));
+    assert!(text.contains("\"duration_days\":7"));
+    assert!(text.contains("\"name\":\"rzd-des-engine\""));
+}
+
+#[test]
+fn canonical_json_sorts_object_keys() {
+    let value = serde_json::json!({
+        "zulu": 2,
+        "alpha": 1
+    });
+
+    assert_eq!(
+        to_canonical_json(&value).expect("canonical JSON"),
+        r#"{"alpha":1,"zulu":2}"#
+    );
 }

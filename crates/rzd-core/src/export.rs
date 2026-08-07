@@ -12,6 +12,44 @@ pub struct Export;
 
 pub const EVENT_TRACE_SCHEMA_V1: &str = "rzd-des-event-trace/v1";
 
+/// Serialize JSON with object keys in lexical order for byte-stable artifacts.
+pub fn to_canonical_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+    fn write_value(value: &serde_json::Value, output: &mut Vec<u8>) {
+        match value {
+            serde_json::Value::Object(object) => {
+                output.push(b'{');
+                let mut entries: Vec<_> = object.iter().collect();
+                entries.sort_unstable_by(|left, right| left.0.cmp(right.0));
+                for (index, (key, child)) in entries.into_iter().enumerate() {
+                    if index > 0 {
+                        output.push(b',');
+                    }
+                    serde_json::to_writer(&mut *output, key).expect("JSON string cannot fail");
+                    output.push(b':');
+                    write_value(child, output);
+                }
+                output.push(b'}');
+            }
+            serde_json::Value::Array(array) => {
+                output.push(b'[');
+                for (index, child) in array.iter().enumerate() {
+                    if index > 0 {
+                        output.push(b',');
+                    }
+                    write_value(child, output);
+                }
+                output.push(b']');
+            }
+            scalar => serde_json::to_writer(&mut *output, scalar).expect("JSON value cannot fail"),
+        }
+    }
+
+    let value = serde_json::to_value(value)?;
+    let mut output = Vec::new();
+    write_value(&value, &mut output);
+    Ok(String::from_utf8(output).expect("serialized JSON must be valid UTF-8"))
+}
+
 impl Export {
     pub fn tu3_to_tsv(rows: &[Tu3Row]) -> String {
         let mut tsv = String::from("\u{FEFF}"); // BOM UTF-8
