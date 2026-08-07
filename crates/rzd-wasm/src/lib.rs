@@ -1,7 +1,7 @@
 use rzd_core::engine::Engine;
 use rzd_core::entities::{Crew, LocoKind, LocoState, Locomotive};
 use rzd_core::network::Network;
-use rzd_core::scenario::{generate_scenario, ScenarioConfig};
+use rzd_core::scenario::{generate_scenario, ScenarioDocument};
 use rzd_core::tu3::tsv_escape;
 use wasm_bindgen::prelude::*;
 
@@ -75,8 +75,10 @@ impl RzdSimulatorWasm {
 
     #[wasm_bindgen]
     pub fn load_scenario(&mut self, scenario_json: &str) -> Result<(), JsValue> {
-        let scenario: ScenarioConfig =
-            serde_json::from_str(scenario_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let scenario = ScenarioDocument::from_json(scenario_json)
+            .map_err(|e| JsValue::from_str(&e))?
+            .config;
+        self.seed = scenario.seed;
 
         let engine = self
             .engine
@@ -84,7 +86,8 @@ impl RzdSimulatorWasm {
             .ok_or_else(|| JsValue::from_str("Network not loaded"))?;
 
         let network = engine.network.clone();
-        let gen = generate_scenario(&network, scenario);
+        let gen = generate_scenario(&network, scenario.clone());
+        engine.prng = rzd_core::prng::Mulberry32::new(scenario.seed);
 
         for crew in gen.crews {
             engine.add_crew(crew);
@@ -102,8 +105,9 @@ impl RzdSimulatorWasm {
         network_json: &str,
         config_json: &str,
     ) -> Result<(), JsValue> {
-        let config: ScenarioConfig =
-            serde_json::from_str(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let config = ScenarioDocument::from_json(config_json)
+            .map_err(|e| JsValue::from_str(&e))?
+            .config;
 
         let seed = config.seed;
         let network =

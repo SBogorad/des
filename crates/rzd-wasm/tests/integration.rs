@@ -3,7 +3,8 @@ use rzd_core::entities::{Crew, CrewState, LocoKind, LocoState, Locomotive};
 use rzd_core::events::EventKind;
 use rzd_core::network::Network;
 use rzd_core::prng::Mulberry32;
-use rzd_core::scenario::{generate_scenario, ScenarioConfig};
+use rzd_core::scenario::{generate_scenario, ScenarioConfig, ScenarioDocument};
+use rzd_wasm::RzdSimulatorWasm;
 
 fn minimal_network_json() -> &'static str {
     r#"{
@@ -587,6 +588,51 @@ fn scenario_config_serialization_roundtrip() {
     let parsed: ScenarioConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.crew_count, config.crew_count);
     assert_eq!(parsed.seed, config.seed);
+}
+
+#[test]
+fn wasm_load_scenario_accepts_versioned_scenario_document() {
+    let document = ScenarioDocument::new(small_scenario_config());
+    let scenario_json =
+        serde_json::to_string(&document).expect("scenario document should serialize");
+
+    let mut simulator = RzdSimulatorWasm::new();
+    simulator
+        .load_network(minimal_network_json())
+        .expect("network should load");
+    simulator
+        .load_scenario(&scenario_json)
+        .expect("WASM should accept rzd-des-scenario/v1");
+
+    let summary: serde_json::Value = serde_json::from_str(
+        &simulator
+            .get_summary()
+            .expect("loaded scenario should have a summary"),
+    )
+    .expect("summary should be JSON");
+    assert_eq!(summary["crew_count"], 3);
+    assert_eq!(summary["loco_count"], 2);
+}
+
+#[test]
+fn wasm_generate_and_load_accepts_versioned_scenario_document() {
+    let document = ScenarioDocument::new(small_scenario_config());
+    let scenario_json =
+        serde_json::to_string(&document).expect("scenario document should serialize");
+
+    let mut simulator = RzdSimulatorWasm::new();
+    simulator
+        .generate_and_load_scenario(minimal_network_json(), &scenario_json)
+        .expect("WASM generation should accept rzd-des-scenario/v1");
+
+    let summary: serde_json::Value = serde_json::from_str(
+        &simulator
+            .get_summary()
+            .expect("generated scenario should have a summary"),
+    )
+    .expect("summary should be JSON");
+    assert_eq!(summary["crew_count"], 3);
+    assert_eq!(summary["loco_count"], 2);
 }
 
 // ====== PRNG tests ======
