@@ -1,10 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
-const inputPath = new URL('./public/sim.json', import.meta.url)
-const outputPath = new URL('./public/findings.json', import.meta.url)
-const rows = JSON.parse(readFileSync(inputPath, 'utf8'))
-
-const findings = rows
+export function buildFindings(rows) {
+  return rows
   .filter(row => row.violations_count > 0)
   .map(row => {
     const critical = row.violations_count >= 2
@@ -27,6 +25,16 @@ const findings = rows
     }
   })
   .sort((a, b) => (a.severity === b.severity ? a.eventTime - b.eventTime : a.severity === 'critical' ? -1 : 1))
+}
 
-writeFileSync(outputPath, `${JSON.stringify(findings, null, 2)}\n`)
-console.log(`Generated ${findings.length} findings in ${outputPath.pathname}`)
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]
+
+if (isMainModule) {
+  const inputPath = new URL('./public/sim.json', import.meta.url)
+  const outputPath = new URL('./public/findings.json', import.meta.url)
+  const rows = JSON.parse(readFileSync(inputPath, 'utf8'))
+  const findings = buildFindings(rows)
+
+  writeFileSync(outputPath, `${JSON.stringify(findings, null, 2)}\n`)
+  console.log(`Generated ${findings.length} findings in ${outputPath.pathname}`)
+}

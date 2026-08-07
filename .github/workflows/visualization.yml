@@ -26,6 +26,7 @@ jobs:
           cache: npm
           cache-dependency-path: visualization/package-lock.json
       - run: npm ci
+      - run: npm run fixtures:check
       - run: npm run build
       - run: npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/visualization-preview.log 2>&1 &
       - run: sleep 3 && npm run smoke:local
