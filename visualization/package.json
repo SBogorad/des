@@ -10,6 +10,7 @@
     "dev": "vite",
     "findings": "node generate-findings.mjs",
     "fixtures:check": "node validate-public-fixtures.mjs",
+    "performance:check": "node check-performance-budget.mjs",
     "build:site": "node build-site.mjs",
     "build": "npm run findings && tsc && vite build",
     "preview": "vite preview",

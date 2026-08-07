@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { Tu3Row, NetworkData, VizState, FilterState, CrewSegment, SyntheticFinding } from './types'
 import { buildVizState } from './data/transform'
-import { ArcScene } from './components/ArcScene'
 import { Timeline } from './components/Timeline'
 import { FilterPanel } from './components/FilterPanel'
 import { PlaybackBar } from './components/PlaybackBar'
 import { ShiftStrip } from './components/ShiftStrip'
+
+const ArcScene = lazy(async () => ({
+  default: (await import('./components/ArcScene')).ArcScene,
+}))
 
 const PLAYBACK_SPEED = 8 // simulation minutes per real second
 
@@ -508,16 +511,18 @@ export default function App() {
             position: 'relative',
             flexShrink: 0,
           }}>
-            <ArcScene
-              vizState={vizState}
-              filter={filter}
-              selectedCrew={selectedCrew}
-              playbackMin={playbackMin}
-              autoRotate={autoRotate}
-              controlStation={selectedFinding?.station ?? null}
-              resolved={resolvedFindingCrew === selectedCrew}
-              onSelectCrew={setSelectedCrew}
-            />
+            <Suspense fallback={<div style={styles.sceneLoading}>Загрузка 3D-сцены…</div>}>
+              <ArcScene
+                vizState={vizState}
+                filter={filter}
+                selectedCrew={selectedCrew}
+                playbackMin={playbackMin}
+                autoRotate={autoRotate}
+                controlStation={selectedFinding?.station ?? null}
+                resolved={resolvedFindingCrew === selectedCrew}
+                onSelectCrew={setSelectedCrew}
+              />
+            </Suspense>
             {/* Overlay hint */}
             {presentationMode && selectedCrewData && (
               <div style={styles.presentationTitle}>
@@ -713,6 +718,10 @@ const styles: Record<string, React.CSSProperties> = {
   resolutionStatus: { color: '#7bf0b6', fontSize: 9, fontWeight: 700, letterSpacing: 1.1 },
   resolutionTitle: { color: '#ebfff5', marginTop: 6, fontSize: 12, fontWeight: 700, lineHeight: 1.3 },
   resolutionText: { color: '#a7d9bd', marginTop: 6, fontSize: 10, lineHeight: 1.45 },
+  sceneLoading: {
+    height: '100%', display: 'grid', placeItems: 'center',
+    background: '#101828', color: '#a9b8d5', fontSize: 13,
+  },
   hint: {
     position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)',
     fontSize: 10, color: '#334466', pointerEvents: 'none',
