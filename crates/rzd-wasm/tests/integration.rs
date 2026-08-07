@@ -635,6 +635,35 @@ fn wasm_generate_and_load_accepts_versioned_scenario_document() {
     assert_eq!(summary["loco_count"], 2);
 }
 
+#[cfg(target_arch = "wasm32")]
+mod browser_tests {
+    use super::minimal_network_json;
+    use rzd_wasm::RzdSimulatorWasm;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    #[wasm_bindgen_test]
+    fn wasm_rejects_unknown_versioned_scenario_schema() {
+        let mut simulator = RzdSimulatorWasm::new();
+        simulator
+            .load_network(minimal_network_json())
+            .expect("network should load");
+
+        let error = simulator
+            .load_scenario(
+                r#"{"schema":"rzd-des-scenario/v99","config":{"crew_count":1,"loco_count":1,"seed":42,"duration_days":1}}"#,
+            )
+            .expect_err("unknown scenario schema must be rejected");
+        assert!(
+            error
+                .as_string()
+                .is_some_and(|message| message.contains("unsupported scenario schema")),
+            "unexpected WASM error: {error:?}"
+        );
+    }
+}
+
 // ====== PRNG tests ======
 
 #[test]
