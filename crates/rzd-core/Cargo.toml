@@ -17,7 +17,7 @@ tracing = "0.1"
 rust_xlsxwriter = "0.68"
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
 proptest = "1.4"
 
 [[bench]]
