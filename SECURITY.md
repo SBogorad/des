@@ -6,7 +6,7 @@ Security fixes are applied to the current `main` branch and the most recent GitH
 
 ## Reporting a vulnerability
 
-Do **not** open a public issue for a suspected vulnerability. Use the repository's [private security advisory reporting channel](https://github.com/xodapi/rzd-des-engine/security/advisories/new) when available, or contact the repository owner privately. Include a minimal reproduction, affected revision, impact assessment, and any proposed mitigation.
+Do **not** open a public issue for a suspected vulnerability. Use the repository's [private security advisory reporting channel](https://github.com/xodapi/des/security/advisories/new) when available, or contact the repository owner privately. Include a minimal reproduction, affected revision, impact assessment, and any proposed mitigation.
 
 We aim to acknowledge reports within 5 business days, provide a status update within 10 business days, and coordinate disclosure after a fix or documented mitigation is available.
 

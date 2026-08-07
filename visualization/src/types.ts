@@ -38,9 +38,8 @@ export interface Tu3Row {
   total_distance_km: number
   violations_count: number
   work_duration_min: number
-  // optional synthetic identity fields
-  full_name?: string
-  personnel_number?: number
+  // Public fixtures contain only an explicit synthetic label, never personnel fields.
+  synthetic_label?: string
 }
 
 export type SegmentKind = 'traveling' | 'rest_turnaround' | 'home_rest' | 'preparation'

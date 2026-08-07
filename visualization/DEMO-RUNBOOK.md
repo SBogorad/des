@@ -5,13 +5,7 @@
 Open the presentation scenario directly:
 
 ```text
-https://syntog.ru/viz/?crew=CREW-0004&mode=presentation
-```
-
-CED mirror:
-
-```text
-https://ced.syntog.ru/viz/?crew=CREW-0004&mode=presentation
+https://des.syntog.ru/demo/?crew=CREW-0004&mode=presentation
 ```
 
 The page uses only synthetic data from the `Северная синтетическая дорога 88_05` scenario.
@@ -83,12 +77,13 @@ node node_modules\vite\bin\vite.js build
 
 ```powershell
 cd C:\project\sd\rzd-des-engine\visualization
-.\deploy-main.ps1
+.\deploy-des.ps1 -HostAlias <ssh-alias> -RemoteDir <remote-directory>
 ```
 
-This primary-domain script rebuilds for `/viz/`, copies the static files to `/var/www/site/ced-hub/viz/` through the existing `stroy` SSH alias, and confirms the current main asset is present. It does not touch Docker services or nginx.
-
-For the CED mirror, use `./deploy.ps1`. It publishes to `/opt/ced/viz/`.
+The deployment script requires an explicitly configured SSH alias and destination.
+It does not contain production hostnames, credentials, internal paths, or nginx
+configuration. It rebuilds the static site, copies the release, and verifies the
+landing and demo contract on the configured destination.
 
 ## Production smoke check
 
@@ -96,11 +91,12 @@ Run this before the presentation:
 
 ```powershell
 cd C:\project\sd\rzd-des-engine\visualization
-.\smoke-check.ps1 -BaseUrl https://syntog.ru -SkipApiCheck
-.\smoke-check.ps1 -BaseUrl https://ced.syntog.ru
+node smoke-check-local.mjs
 ```
 
-The first command verifies the main-domain static visualization only because `syntog.ru/api` requires authorization. The second also verifies CED API health. Both checks validate the current JavaScript asset, network, simulation, and findings contracts.
+The local smoke check validates the current JavaScript asset, network,
+simulation, and findings contracts without requiring any private API
+credentials. Set `BASE_URL` to a deployed public demo URL when needed.
 
 ## Pre-show checklist
 

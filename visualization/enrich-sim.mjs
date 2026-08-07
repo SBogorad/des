@@ -44,9 +44,10 @@ const SIM_DURATION = 4320;
 let enriched = rows.map((row, i) => {
   const r = { ...row };
 
-  // Do not use person-like names in public fixtures.
-  r.full_name = generateCrewLabel(r.crew_id);
-  r.personnel_number = 10000 + i * 7 + randRange(0, 100);
+  // Public fixtures contain an explicit synthetic label, never personnel fields.
+  delete r.full_name;
+  delete r.personnel_number;
+  r.synthetic_label = generateCrewLabel(r.crew_id);
 
   // Spread departures across 3 days instead of all at time 0
   // Crew i departs at a staggered time within the first day
@@ -107,5 +108,5 @@ enriched = enriched.map((r, i) => ({ ...r, row_number: i }));
 
 writeFileSync('public/sim.json', JSON.stringify(enriched, null, 2));
 console.log(`Wrote enriched sim.json with ${enriched.length} rows`);
-console.log(`Sample: ${enriched[0].full_name} depart=${enriched[0].departure_time} arrive=${enriched[0].arrival_time} shift_end=${enriched[0].shift_end}`);
+console.log(`Sample: ${enriched[0].synthetic_label} depart=${enriched[0].departure_time} arrive=${enriched[0].arrival_time} shift_end=${enriched[0].shift_end}`);
 console.log(`Time range: ${Math.min(...enriched.map(r=>r.appear_time))} - ${Math.max(...enriched.map(r=>r.shift_end))}`);

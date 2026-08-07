@@ -83,7 +83,7 @@ export function buildVizState(rows: Tu3Row[], network: NetworkData): VizState {
   const sorted = [...rows].sort((a, b) => a.appear_time - b.appear_time)
 
   for (const row of sorted) {
-    const name = row.full_name ?? row.crew_id
+    const name = row.synthetic_label ?? row.crew_id
 
     // preparation: appear → departure (same station)
     if (row.departure_time > row.appear_time) {

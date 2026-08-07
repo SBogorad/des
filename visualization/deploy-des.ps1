@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
-  [string]$HostAlias = 'stroy',
-  [string]$RemoteDir = '/var/www/des.syntog.ru',
+  [Parameter(Mandatory = $true)]
+  [string]$HostAlias,
+  [Parameter(Mandatory = $true)]
+  [string]$RemoteDir,
   [switch]$SkipBuild
 )
 
@@ -34,7 +36,7 @@ foreach ($required in @('index.html', 'styles.css', 'demo/index.html', 'demo/fin
 
 Invoke-Native 'ssh' @($HostAlias, "set -e; mkdir -p $RemoteDir")
 Invoke-Native 'scp' @('-r', (Join-Path $DistDir '*'), "${HostAlias}:$RemoteDir/")
-Invoke-Native 'ssh' @($HostAlias, "set -e; grep -q 'Discrete-event simulation' $RemoteDir/index.html; test -f $RemoteDir/demo/findings.json; echo deployed:des.syntog.ru")
+Invoke-Native 'ssh' @($HostAlias, "set -e; grep -q 'Discrete-event simulation' $RemoteDir/index.html; test -f $RemoteDir/demo/findings.json; echo deployed:$RemoteDir")
 
 Write-Host 'DES site deployed successfully.' -ForegroundColor Green
-Write-Host 'Verify: https://des.syntog.ru/'
+Write-Host 'Verify the configured deployment URL separately.'
