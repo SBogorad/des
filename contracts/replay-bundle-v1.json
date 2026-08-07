@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xodapi/des/contracts/replay-bundle-v1.json",
+  "title": "RZD DES replay bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "engine", "replay", "network", "results"],
+  "properties": {
+    "schema": { "const": "rzd-des-replay-bundle/v1" },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "replay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seed", "duration_days", "until_minutes", "warmup_minutes", "scenario"],
+      "properties": {
+        "seed": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "duration_days": { "type": "integer", "minimum": 0 },
+        "until_minutes": { "type": "integer", "minimum": 0 },
+        "warmup_minutes": { "type": "integer", "minimum": 0 },
+        "scenario": { "$ref": "scenario-v1.json" }
+      }
+    },
+    "network": { "type": "object" },
+    "results": {
+      "type": "object",
+      "required": ["stats", "violation_summary", "ced", "tu3_row_count"],
+      "properties": {
+        "stats": { "type": "object" },
+        "violation_summary": { "type": "object" },
+        "ced": { "$ref": "ced-export-v1.json" },
+        "tu3_row_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

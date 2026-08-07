@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xodapi/des/contracts/event-trace-v1.json",
+  "title": "RZD DES event trace v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "until_minutes", "events"],
+  "properties": {
+    "schema": { "const": "rzd-des-event-trace/v1" },
+    "until_minutes": { "type": "integer", "minimum": 0 },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["time", "kind", "crew_id", "loco_id", "segment_id", "priority", "id"],
+        "properties": {
+          "time": { "type": "integer", "minimum": 0 },
+          "kind": {},
+          "crew_id": { "type": ["string", "null"] },
+          "loco_id": { "type": ["string", "null"] },
+          "segment_id": { "type": ["string", "null"] },
+          "priority": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "id": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}
