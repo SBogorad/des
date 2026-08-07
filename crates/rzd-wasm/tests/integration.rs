@@ -1,9 +1,9 @@
 use rzd_core::engine::Engine;
-use rzd_core::network::Network;
-use rzd_core::entities::{Crew, CrewState, Locomotive, LocoKind, LocoState};
-use rzd_core::scenario::{ScenarioConfig, generate_scenario};
+use rzd_core::entities::{Crew, CrewState, LocoKind, LocoState, Locomotive};
 use rzd_core::events::EventKind;
+use rzd_core::network::Network;
 use rzd_core::prng::Mulberry32;
+use rzd_core::scenario::{generate_scenario, ScenarioConfig};
 
 fn minimal_network_json() -> &'static str {
     r#"{
@@ -45,6 +45,8 @@ fn make_loco(id: &str, depot: &str) -> Locomotive {
         mileage_km: 0.0,
         hours_since_to: 0.0,
         failures_total: 0,
+        inventory_number: 0,
+        manufacture_year: 2015,
     }
 }
 
@@ -56,6 +58,8 @@ fn small_scenario_config() -> ScenarioConfig {
         duration_days: 1,
         shift_spread_min: 5,
         night_shift_ratio: 0.0,
+        allowed_depot_ids: vec![],
+        allowed_leg_ids: vec![],
     }
 }
 
@@ -68,6 +72,8 @@ fn run_small_simulation(seed: u32) -> Engine {
         duration_days: 1,
         shift_spread_min: 5,
         night_shift_ratio: 0.0,
+        allowed_depot_ids: vec![],
+        allowed_leg_ids: vec![],
     };
     let scenario = generate_scenario(&net, config);
     let mut engine = Engine::new(net, seed);
@@ -133,7 +139,9 @@ fn network_segment_travel_time() {
 #[test]
 fn network_shortest_path_a_to_c() {
     let net = minimal_network();
-    let path = net.shortest_path(&"ST-A".to_string(), &"ST-C".to_string()).unwrap();
+    let path = net
+        .shortest_path(&"ST-A".to_string(), &"ST-C".to_string())
+        .unwrap();
     assert_eq!(path.len(), 2);
     assert_eq!(path[0], "SEG-1");
     assert_eq!(path[1], "SEG-2");
@@ -142,7 +150,9 @@ fn network_shortest_path_a_to_c() {
 #[test]
 fn network_shortest_path_same_station() {
     let net = minimal_network();
-    let path = net.shortest_path(&"ST-A".to_string(), &"ST-A".to_string()).unwrap();
+    let path = net
+        .shortest_path(&"ST-A".to_string(), &"ST-A".to_string())
+        .unwrap();
     assert!(path.is_empty());
 }
 
@@ -198,12 +208,18 @@ fn generate_scenario_produces_crews_and_locos() {
 fn generate_scenario_crews_have_valid_depot() {
     let net = minimal_network();
     let scenario = generate_scenario(&net, ScenarioConfig::default());
-    let depots: Vec<&str> = net.stations.values()
+    let depots: Vec<&str> = net
+        .stations
+        .values()
         .filter_map(|s| s.depot_id.as_deref())
         .collect();
     for crew in &scenario.crews {
-        assert!(depots.contains(&crew.depot_id.as_str()),
-            "Crew {} depot {} not in network depots", crew.id, crew.depot_id);
+        assert!(
+            depots.contains(&crew.depot_id.as_str()),
+            "Crew {} depot {} not in network depots",
+            crew.id,
+            crew.depot_id
+        );
     }
 }
 
@@ -211,12 +227,18 @@ fn generate_scenario_crews_have_valid_depot() {
 fn generate_scenario_locos_have_valid_depot() {
     let net = minimal_network();
     let scenario = generate_scenario(&net, ScenarioConfig::default());
-    let depots: Vec<&str> = net.stations.values()
+    let depots: Vec<&str> = net
+        .stations
+        .values()
         .filter_map(|s| s.depot_id.as_deref())
         .collect();
     for loco in &scenario.locos {
-        assert!(depots.contains(&loco.depot_id.as_str()),
-            "Loco {} depot {} not in network depots", loco.id, loco.depot_id);
+        assert!(
+            depots.contains(&loco.depot_id.as_str()),
+            "Loco {} depot {} not in network depots",
+            loco.id,
+            loco.depot_id
+        );
     }
 }
 
@@ -276,7 +298,10 @@ fn engine_export_ced_no_panic() {
     engine.add_crew(make_crew("C1", "DEP-1"));
     engine.add_loco(make_loco("L1", "DEP-1"));
     let ced = engine.export_ced();
-    assert!(ced.trips.is_empty() || !ced.trips.is_empty());
+    assert!(
+        ced.trips.is_empty(),
+        "CED with no run should have empty trips"
+    );
 }
 
 // ====== Crew state machine tests ======
@@ -348,7 +373,7 @@ fn crew_state_resting_home_to_athome() {
 
 #[test]
 fn crew_state_athome_to_finished() {
-    assert!(CrewState::AtHome.can_transition_to(&CrewState::Finished));
+    assert!(!CrewState::AtHome.can_transition_to(&CrewState::Finished));
 }
 
 #[test]
@@ -372,12 +397,22 @@ fn crew_state_invalid_medcheck_to_working() {
 fn event_queue_push_returns_increasing_ids() {
     let mut queue = rzd_core::events::EventQueue::new();
     let id1 = queue.push(rzd_core::events::SimEvent {
-        time: 10, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 10,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     let id2 = queue.push(rzd_core::events::SimEvent {
-        time: 20, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 20,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     assert_eq!(id1, 1);
     assert_eq!(id2, 2);
@@ -387,12 +422,22 @@ fn event_queue_push_returns_increasing_ids() {
 fn event_queue_pop_returns_earliest_first() {
     let mut queue = rzd_core::events::EventQueue::new();
     queue.push(rzd_core::events::SimEvent {
-        time: 100, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 100,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     queue.push(rzd_core::events::SimEvent {
-        time: 10, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 10,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     let first = queue.pop().unwrap();
     assert_eq!(first.time, 10);
@@ -402,8 +447,13 @@ fn event_queue_pop_returns_earliest_first() {
 fn event_queue_cancel_removes_event() {
     let mut queue = rzd_core::events::EventQueue::new();
     let id = queue.push(rzd_core::events::SimEvent {
-        time: 10, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 10,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     queue.cancel(id);
     assert!(queue.pop().is_none());
@@ -413,12 +463,22 @@ fn event_queue_cancel_removes_event() {
 fn event_queue_cancel_only_removes_target() {
     let mut queue = rzd_core::events::EventQueue::new();
     let id1 = queue.push(rzd_core::events::SimEvent {
-        time: 10, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 10,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     let _id2 = queue.push(rzd_core::events::SimEvent {
-        time: 20, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 20,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     queue.cancel(id1);
     let next = queue.pop().unwrap();
@@ -429,8 +489,13 @@ fn event_queue_cancel_only_removes_target() {
 fn event_queue_clear_resets() {
     let mut queue = rzd_core::events::EventQueue::new();
     queue.push(rzd_core::events::SimEvent {
-        time: 10, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 10,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     queue.clear();
     assert!(queue.is_empty());
@@ -441,12 +506,22 @@ fn event_queue_clear_resets() {
 fn event_queue_priority_ordering() {
     let mut queue = rzd_core::events::EventQueue::new();
     queue.push(rzd_core::events::SimEvent {
-        time: 10, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 5, id: 0,
+        time: 10,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 5,
+        id: 0,
     });
     queue.push(rzd_core::events::SimEvent {
-        time: 10, kind: EventKind::ShiftAppear,
-        crew_id: None, loco_id: None, segment_id: None, priority: 1, id: 0,
+        time: 10,
+        kind: EventKind::ShiftAppear,
+        crew_id: None,
+        loco_id: None,
+        segment_id: None,
+        priority: 1,
+        id: 0,
     });
     let first = queue.pop().unwrap();
     assert_eq!(first.priority, 5);
@@ -463,15 +538,18 @@ fn network_region_for_segment() {
 
 #[test]
 fn network_with_region_norms() {
-    use rzd_core::norms::{RegionNormsConfig, RegionNorms};
+    use rzd_core::norms::{RegionNorms, RegionNormsConfig};
     let mut config = RegionNormsConfig::new();
-    config.regions.insert("R1".to_string(), RegionNorms {
-        region_id: "R1".to_string(),
-        failure_rate_multiplier: 1.5,
-        voltage_sag_multiplier: 2.0,
-        speed_multiplier: 0.8,
-        ..Default::default()
-    });
+    config.regions.insert(
+        "R1".to_string(),
+        RegionNorms {
+            region_id: "R1".to_string(),
+            failure_rate_multiplier: 1.5,
+            voltage_sag_multiplier: 2.0,
+            speed_multiplier: 0.8,
+            ..Default::default()
+        },
+    );
     let net = minimal_network().with_region_norms(config);
     let region = net.region_for_segment("SEG-1").unwrap();
     assert_eq!(region, "R1");
@@ -543,6 +621,8 @@ fn large_simulation_100_crews_7_days() {
         duration_days: 7,
         shift_spread_min: 30,
         night_shift_ratio: 0.3,
+        allowed_depot_ids: vec![],
+        allowed_leg_ids: vec![],
     };
     let scenario = generate_scenario(&net, config);
     let mut engine = Engine::new(net, 123);
@@ -567,9 +647,9 @@ fn large_simulation_100_crews_7_days() {
 #[test]
 fn northern_network_loads_and_simulates() {
     let json = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../data/networks/northern.json")
-    ).expect("Failed to read northern.json");
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/networks/northern.json"),
+    )
+    .expect("Failed to read northern.json");
     let net = Network::from_json(&json).unwrap();
     assert_eq!(net.stations.len(), 35);
     assert_eq!(net.segments.len(), 38);
@@ -581,6 +661,8 @@ fn northern_network_loads_and_simulates() {
         duration_days: 7,
         shift_spread_min: 30,
         night_shift_ratio: 0.3,
+        allowed_depot_ids: vec![],
+        allowed_leg_ids: vec![],
     };
     let scenario = generate_scenario(&net, config);
     let mut engine = Engine::new(net, 42);

@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,3 +40,56 @@ jobs:
         with:
           target: wasm32-unknown-unknown
       - run: cargo check -p rzd-wasm --target wasm32-unknown-unknown
+
+  ts-host:
+    runs-on: ubuntu-latest
+    needs: wasm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.19.0
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo install wasm-pack --locked
+      - run: wasm-pack build crates/rzd-wasm --target web --out-dir pkg
+      - run: pnpm --dir ts-host install --frozen-lockfile
+      - run: pnpm --dir ts-host run build
+
+  benchmark-smoke:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Run deterministic synthetic benchmark twice
+        run: |
+          cargo run -p rzd-cli -- benchmark \
+            --network data/networks/synthetic_one_road_88_05.json \
+            --profile one-road-demo \
+            --output benchmark-a.json
+          cargo run -p rzd-cli -- benchmark \
+            --network data/networks/synthetic_one_road_88_05.json \
+            --profile one-road-demo \
+            --output benchmark-b.json
+      - name: Verify benchmark contract and deterministic trace
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          reports = [json.loads(Path(name).read_text()) for name in ("benchmark-a.json", "benchmark-b.json")]
+          for report in reports:
+              assert report["schema"] == "rzd-des-benchmark-report/v1"
+              assert report["profile"] == "one-road-demo"
+              results = report["results"]
+              assert results["events_processed"] > 0
+              assert results["event_errors"] == 0
+              assert len(results["trace_signature"]) == 64
+          assert reports[0]["results"]["trace_signature"] == reports[1]["results"]["trace_signature"]
+          PY

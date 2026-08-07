@@ -5,8 +5,11 @@ use std::collections::HashMap;
 fn load_test_network() -> Network {
     // Try to load northern.json first, fall back to synthetic
     let northern_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .join("data").join("networks").join("northern.json");
+        .parent()
+        .unwrap()
+        .join("data")
+        .join("networks")
+        .join("northern.json");
 
     if let Ok(json) = std::fs::read_to_string(&northern_path) {
         if let Ok(network) = Network::from_json(&json) {
@@ -19,57 +22,83 @@ fn load_test_network() -> Network {
 
     for i in 1..=5 {
         let id = format!("ST-{:03}", i);
-        stations.insert(id.clone(), rzd_core::network::Station {
-            id: id.clone(),
-            name: format!("Station {}", i),
-            kind: if i == 1 { rzd_core::network::StationKind::MainDepot }
-                   else if i == 5 { rzd_core::network::StationKind::Terminal }
-                   else if i == 3 { rzd_core::network::StationKind::Turnaround }
-                   else { rzd_core::network::StationKind::Waypoint },
-            region: "NORTH".to_string(),
-            coords: None,
-            depot_id: if i == 1 { Some("DEP-01".to_string()) }
-                      else if i == 3 { Some("DEP-02".to_string()) }
-                      else { None },
-            voltage_kv: rzd_core::network::VoltageKind::DC3000,
-            electrification: true,
-        });
+        stations.insert(
+            id.clone(),
+            rzd_core::network::Station {
+                id: id.clone(),
+                name: format!("Station {}", i),
+                kind: if i == 1 {
+                    rzd_core::network::StationKind::MainDepot
+                } else if i == 5 {
+                    rzd_core::network::StationKind::Terminal
+                } else if i == 3 {
+                    rzd_core::network::StationKind::Turnaround
+                } else {
+                    rzd_core::network::StationKind::Waypoint
+                },
+                region: "NORTH".to_string(),
+                coords: None,
+                depot_id: if i == 1 {
+                    Some("DEP-01".to_string())
+                } else if i == 3 {
+                    Some("DEP-02".to_string())
+                } else {
+                    None
+                },
+                voltage_kv: rzd_core::network::VoltageKind::DC3000,
+                electrification: true,
+            },
+        );
         if i > 1 {
             let seg_id = format!("SEG-{:03}", i - 1);
-            segments.insert(seg_id.clone(), rzd_core::network::Segment {
-                id: seg_id,
-                from: format!("ST-{:03}", i - 1),
-                to: id,
-                distance_km: 50.0,
-                base_speed_kmh: 80.0,
-                gradient_factor: 1.0,
-                failure_base_rate: 0.001,
-                voltage_sag_prob: 0.01,
-                single_track: false,
-            });
+            segments.insert(
+                seg_id.clone(),
+                rzd_core::network::Segment {
+                    id: seg_id,
+                    from: format!("ST-{:03}", i - 1),
+                    to: id,
+                    distance_km: 50.0,
+                    base_speed_kmh: 80.0,
+                    gradient_factor: 1.0,
+                    failure_base_rate: 0.001,
+                    voltage_sag_prob: 0.01,
+                    single_track: false,
+                },
+            );
         }
     }
 
     let mut legs = HashMap::new();
-    legs.insert("LEG-01".to_string(), rzd_core::network::Leg {
-        id: "LEG-01".into(),
-        name: "Test Route".into(),
-        from_depot: "DEP-01".into(),
-        to_depot: "DEP-02".into(),
-        segments: vec!["SEG-001".into(), "SEG-002".into(), "SEG-003".into(), "SEG-004".into()],
-        total_km: 200.0,
-        road_id: "ROAD-1".into(),
-    });
+    legs.insert(
+        "LEG-01".to_string(),
+        rzd_core::network::Leg {
+            id: "LEG-01".into(),
+            name: "Test Route".into(),
+            from_depot: "DEP-01".into(),
+            to_depot: "DEP-02".into(),
+            segments: vec![
+                "SEG-001".into(),
+                "SEG-002".into(),
+                "SEG-003".into(),
+                "SEG-004".into(),
+            ],
+            total_km: 200.0,
+            road_id: "ROAD-1".into(),
+        },
+    );
 
     let mut roads = HashMap::new();
-    roads.insert("ROAD-1".to_string(), rzd_core::network::Road {
-        id: "ROAD-1".into(),
-        name: "Test Road".into(),
-        stations: (1..=5).map(|i| format!("ST-{:03}", i)).collect(),
-        depots: vec!["DEP-01".into(), "DEP-02".into()],
-        legs: vec!["LEG-01".into()],
-        region_multiplier: 1.0,
-    });
+    roads.insert(
+        "ROAD-1".to_string(),
+        rzd_core::network::Road {
+            id: "ROAD-1".into(),
+            name: "Test Road".into(),
+            stations: (1..=5).map(|i| format!("ST-{:03}", i)).collect(),
+            depots: vec!["DEP-01".into(), "DEP-02".into()],
+            legs: vec!["LEG-01".into()],
+            region_multiplier: 1.0,
+        },
+    );
 
     Network::new(stations, segments, legs, roads)
 }
@@ -108,8 +137,16 @@ fn test_generate_scenario_deterministic() {
     assert_eq!(s1.crews.len(), s2.crews.len());
     assert_eq!(s1.locos.len(), s2.locos.len());
 
-    let mut crews1: Vec<_> = s1.crews.iter().map(|c| (&c.id, &c.depot_id, &c.route_segments)).collect();
-    let mut crews2: Vec<_> = s2.crews.iter().map(|c| (&c.id, &c.depot_id, &c.route_segments)).collect();
+    let mut crews1: Vec<_> = s1
+        .crews
+        .iter()
+        .map(|c| (&c.id, &c.depot_id, &c.route_segments))
+        .collect();
+    let mut crews2: Vec<_> = s2
+        .crews
+        .iter()
+        .map(|c| (&c.id, &c.depot_id, &c.route_segments))
+        .collect();
     crews1.sort();
     crews2.sort();
 
@@ -131,11 +168,16 @@ fn test_generate_scenario_crews_have_routes() {
 
     let scenario = generate_scenario(&network, config);
 
-    let crews_with_routes = scenario.crews.iter()
+    let crews_with_routes = scenario
+        .crews
+        .iter()
         .filter(|c| !c.route_segments.is_empty())
         .count();
 
-    assert!(crews_with_routes > 0, "At least some crews should have routes assigned");
+    assert!(
+        crews_with_routes > 0,
+        "At least some crews should have routes assigned"
+    );
 }
 
 #[test]
@@ -173,8 +215,55 @@ fn test_generate_scenario_large() {
     assert_eq!(scenario.crews.len(), 100);
     assert_eq!(scenario.locos.len(), 30);
 
-    let crews_with_routes = scenario.crews.iter()
+    let crews_with_routes = scenario
+        .crews
+        .iter()
         .filter(|c| !c.route_segments.is_empty())
         .count();
-    assert!(crews_with_routes > 10, "Some crews should have routes assigned");
+    assert!(
+        crews_with_routes > 10,
+        "Some crews should have routes assigned"
+    );
+}
+
+#[test]
+fn test_generate_scenario_respects_allowed_shoulder_scope() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("data")
+        .join("networks")
+        .join("synthetic_one_road_88_05.json");
+    let json = std::fs::read_to_string(root).expect("synthetic network json");
+    let network = Network::from_json(&json).expect("synthetic network");
+    let config = ScenarioConfig {
+        crew_count: 24,
+        loco_count: 12,
+        seed: 20260708,
+        duration_days: 30,
+        allowed_depot_ids: vec!["SD-1".into(), "SD-2".into(), "TD-72".into()],
+        allowed_leg_ids: vec!["LEG-01".into(), "LEG-02".into(), "LEG-03".into()],
+        ..Default::default()
+    };
+
+    let scenario = generate_scenario(&network, config);
+
+    assert!(scenario
+        .metadata
+        .depots_used
+        .iter()
+        .all(|depot| ["SD-1", "SD-2", "TD-72"].contains(&depot.as_str())));
+    assert_eq!(scenario.metadata.legs_assigned, 3);
+    assert!(scenario
+        .crews
+        .iter()
+        .filter_map(|crew| crew.current_leg.as_ref())
+        .all(|leg| ["LEG-01", "LEG-02", "LEG-03"].contains(&leg.as_str())));
+    assert!(scenario
+        .metadata
+        .regions_covered
+        .iter()
+        .all(|region| ["A-West", "B-Central"].contains(&region.as_str())));
 }

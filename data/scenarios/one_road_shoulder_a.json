@@ -1,0 +1,15 @@
+{
+  "schema": "rzd-des-scenario/v1",
+  "name": "one-road-shoulder-a",
+  "description": "Synthetic western shoulder month for the one-road 88_05 network.",
+  "config": {
+    "crew_count": 60,
+    "loco_count": 30,
+    "seed": 20260708,
+    "duration_days": 30,
+    "shift_spread_min": 30,
+    "night_shift_ratio": 0.3,
+    "allowed_depot_ids": ["SD-1", "SD-2", "TD-72"],
+    "allowed_leg_ids": ["LEG-01", "LEG-02", "LEG-03"]
+  }
+}

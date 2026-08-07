@@ -1,0 +1,9 @@
+# Default ownership
+* @xodapi
+
+# Simulation contracts and release-sensitive paths
+/.github/ @xodapi
+/crates/rzd-core/ @xodapi
+/crates/rzd-wasm/ @xodapi
+/cli/ @xodapi
+/data/ @xodapi

@@ -1,10 +1,18 @@
+use crate::network::{DepotId, LegId, SegmentId, StationId};
 use serde::{Deserialize, Serialize};
-use crate::network::{StationId, DepotId, LegId, SegmentId};
 
 pub type CrewId = String;
 pub type LocoId = String;
 pub type SimTime = u64;
 pub type ViolationId = String;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CrewQualification {
+    Assistant,
+    Junior,
+    Senior,
+    Instructor,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CrewState {
@@ -41,7 +49,6 @@ impl CrewState {
                 | (CrewState::RestingAway, CrewState::Finished)
                 | (CrewState::Finished, CrewState::RestingHome)
                 | (CrewState::RestingHome, CrewState::AtHome)
-                | (CrewState::AtHome, CrewState::Finished) // allow re-entry stop
         )
     }
 }
@@ -68,6 +75,17 @@ pub struct Crew {
     pub overtime_8h_flagged: bool,
     pub total_distance_km: f32,
     pub in_voltage_sag: bool,
+    // Synthetic identity fields (populated by scenario generator)
+    #[serde(default)]
+    pub personnel_number: u32,
+    #[serde(default)]
+    pub full_name: String,
+    #[serde(default)]
+    pub assistant_personnel_number: u32,
+    #[serde(default)]
+    pub assistant_full_name: String,
+    #[serde(default)]
+    pub qualification: Option<CrewQualification>,
 }
 
 impl Crew {
@@ -92,6 +110,11 @@ impl Crew {
             overtime_8h_flagged: false,
             total_distance_km: 0.0,
             in_voltage_sag: false,
+            personnel_number: 0,
+            full_name: String::new(),
+            assistant_personnel_number: 0,
+            assistant_full_name: String::new(),
+            qualification: None,
         }
     }
 
@@ -148,6 +171,15 @@ pub struct Locomotive {
     pub mileage_km: f32,
     pub hours_since_to: f32,
     pub failures_total: u32,
+    // Synthetic identity fields (populated by scenario generator)
+    #[serde(default)]
+    pub inventory_number: u32,
+    #[serde(default = "default_manufacture_year")]
+    pub manufacture_year: u16,
+}
+
+fn default_manufacture_year() -> u16 {
+    2015
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +195,20 @@ pub enum LocoState {
     InUse,
     Maintenance { until: SimTime },
     Failed,
+}
+
+impl LocoState {
+    pub fn can_transition_to(&self, new_state: &LocoState) -> bool {
+        matches!(
+            (self, new_state),
+            (LocoState::Available, LocoState::InUse)
+                | (LocoState::Available, LocoState::Maintenance { .. })
+                | (LocoState::InUse, LocoState::Available)
+                | (LocoState::InUse, LocoState::Failed)
+                | (LocoState::Failed, LocoState::Available)
+                | (LocoState::Maintenance { .. }, LocoState::Available)
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]

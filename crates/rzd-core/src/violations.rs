@@ -1,10 +1,10 @@
+use crate::entities::{CrewId, LocoId, SimTime, ViolationId};
+use crate::events::ViolationType;
+use crate::network::SegmentId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::entities::{CrewId, LocoId, ViolationId, SimTime};
-use crate::network::SegmentId;
-use crate::events::ViolationType;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Severity {
     Warning,
     Critical,
@@ -36,6 +36,12 @@ pub struct ViolationAnalytics {
     violation_counter: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViolationAnalyticsSnapshot {
+    pub violations: Vec<Violation>,
+    pub violation_counter: u64,
+}
+
 impl ViolationAnalytics {
     pub fn new() -> Self {
         Self {
@@ -52,13 +58,19 @@ impl ViolationAnalytics {
 
     pub fn add_violation(&mut self, v: Violation) {
         let idx = self.violations.len();
-        self.crew_index.entry(v.crew_id.clone()).or_default().push(idx);
+        self.crew_index
+            .entry(v.crew_id.clone())
+            .or_default()
+            .push(idx);
         self.violations.push(v);
     }
 
     pub fn get_by_crew(&self, crew_id: &CrewId) -> Vec<&Violation> {
         match self.crew_index.get(crew_id) {
-            Some(indices) => indices.iter().filter_map(|&i| self.violations.get(i)).collect(),
+            Some(indices) => indices
+                .iter()
+                .filter_map(|&i| self.violations.get(i))
+                .collect(),
             None => Vec::new(),
         }
     }
@@ -68,7 +80,9 @@ impl ViolationAnalytics {
     }
 
     pub fn has_type(&self, crew_id: &CrewId, vtype: ViolationType) -> bool {
-        self.get_by_crew(crew_id).iter().any(|v| v.violation_type == vtype)
+        self.get_by_crew(crew_id)
+            .iter()
+            .any(|v| v.violation_type == vtype)
     }
 
     pub fn summary(&self) -> ViolationSummary {
@@ -102,9 +116,31 @@ impl ViolationAnalytics {
     pub fn is_empty(&self) -> bool {
         self.violations.is_empty()
     }
+
+    pub fn snapshot(&self) -> ViolationAnalyticsSnapshot {
+        ViolationAnalyticsSnapshot {
+            violations: self.violations.clone(),
+            violation_counter: self.violation_counter,
+        }
+    }
+
+    pub fn from_snapshot(snapshot: ViolationAnalyticsSnapshot) -> Self {
+        let mut crew_index: HashMap<CrewId, Vec<usize>> = HashMap::new();
+        for (idx, violation) in snapshot.violations.iter().enumerate() {
+            crew_index
+                .entry(violation.crew_id.clone())
+                .or_default()
+                .push(idx);
+        }
+        Self {
+            violations: snapshot.violations,
+            crew_index,
+            violation_counter: snapshot.violation_counter,
+        }
+    }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ViolationSummary {
     pub total: usize,
     pub by_type: HashMap<ViolationType, u32>,

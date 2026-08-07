@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - name: Validate source
+        run: |
+          cargo fmt --all --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --all-targets
+      - name: Build native CLI
+        run: cargo build -p rzd-cli --release
+      - name: Build WASM package
+        run: |
+          cargo install wasm-pack --locked
+          wasm-pack build crates/rzd-wasm --target web --out-dir pkg
+      - name: Package artifacts
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          tar -czf "dist/rzd-cli-${TAG}-linux-x86_64.tar.gz" -C target/release rzd-cli
+          tar -czf "dist/rzd-wasm-${TAG}.tar.gz" -C crates/rzd-wasm pkg
+          sha256sum dist/* > dist/SHA256SUMS
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/* --verify-tag --generate-notes --title "${{ github.ref_name }}"

@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mulberry32 {
     state: u32,
 }
@@ -25,5 +28,9 @@ impl Mulberry32 {
 
     pub fn chance(&mut self, probability: f64) -> bool {
         (self.next_f32() as f64) < probability
+    }
+
+    pub fn state(&self) -> u32 {
+        self.state
     }
 }

@@ -1,8 +1,10 @@
-use serde::{Deserialize, Serialize};
-use std::collections::BinaryHeap;
-use std::cmp::Ordering;
-use crate::entities::{CrewId, LocoId, SimTime, FailureKind};
+use crate::entities::{CrewId, FailureKind, LocoId, SimTime};
 use crate::network::SegmentId;
+use crate::violations::Severity;
+use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum ViolationType {
@@ -42,7 +44,10 @@ pub enum EventKind {
     LineChangeStart,
 
     // Voltage
-    VoltageSagStart { voltage_v: u32, segment_id: SegmentId },
+    VoltageSagStart {
+        voltage_v: u32,
+        segment_id: SegmentId,
+    },
     VoltageSagEnd,
 
     // Reserve
@@ -63,6 +68,12 @@ pub enum EventKind {
 
     // Violations
     ViolationDetected(ViolationType),
+    InjectedViolation {
+        violation_type: ViolationType,
+        severity: Severity,
+        description: String,
+        norm_reference: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -76,17 +87,47 @@ pub struct SimEvent {
     pub id: u64,
 }
 
+impl Default for SimEvent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl SimEvent {
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    pub fn new() -> Self {
+        SimEvent {
+            time: 0,
+            kind: EventKind::ShiftAppear,
+            crew_id: None,
+            loco_id: None,
+            segment_id: None,
+            priority: 0,
+            id: 0,
+        }
+    }
+
+    /// Reset all fields to default for pool reuse
+    pub fn reset(&mut self) {
+        self.time = 0;
+        self.kind = EventKind::ShiftAppear;
+        self.crew_id = None;
+        self.loco_id = None;
+        self.segment_id = None;
+        self.priority = 0;
+        self.id = 0;
     }
 }
 
 impl Ord for SimEvent {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.time.cmp(&self.time)
+        other
+            .time
+            .cmp(&self.time)
             .then_with(|| self.priority.cmp(&other.priority))
-            .then_with(|| self.id.cmp(&other.id))
+            .then_with(|| other.id.cmp(&self.id))
     }
 }
 
@@ -105,7 +146,14 @@ impl Default for EventQueue {
 pub struct EventQueue {
     heap: BinaryHeap<SimEvent>,
     counter: u64,
-    cancelled: std::collections::HashSet<u64>,
+    cancelled: HashSet<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventQueueSnapshot {
+    pub pending_events: Vec<SimEvent>,
+    pub counter: u64,
+    pub cancelled: Vec<u64>,
 }
 
 impl EventQueue {
@@ -113,7 +161,7 @@ impl EventQueue {
         Self {
             heap: BinaryHeap::new(),
             counter: 0,
-            cancelled: std::collections::HashSet::new(),
+            cancelled: HashSet::new(),
         }
     }
 
@@ -122,6 +170,10 @@ impl EventQueue {
         event.id = self.counter;
         self.heap.push(event);
         self.counter
+    }
+
+    pub fn push_existing(&mut self, event: SimEvent) {
+        self.heap.push(event);
     }
 
     pub fn cancel(&mut self, id: u64) {
@@ -139,13 +191,14 @@ impl EventQueue {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.heap.is_empty()
+        self.heap.len() <= self.cancelled.len()
     }
 
     pub fn len(&self) -> usize {
-        self.heap.len()
+        self.heap.len() - self.cancelled.len()
     }
 
+    /// Peek at the next event. May return a cancelled event — use pop() for guaranteed non-cancelled.
     pub fn peek(&self) -> Option<&SimEvent> {
         self.heap.peek()
     }
@@ -155,8 +208,42 @@ impl EventQueue {
         self.cancelled.clear();
         self.counter = 0;
     }
+
+    pub fn snapshot(&self) -> EventQueueSnapshot {
+        let mut cancelled: Vec<_> = self.cancelled.iter().copied().collect();
+        cancelled.sort_unstable();
+        EventQueueSnapshot {
+            pending_events: self.heap.clone().into_vec(),
+            counter: self.counter,
+            cancelled,
+        }
+    }
+
+    pub fn from_snapshot(snapshot: EventQueueSnapshot) -> Self {
+        Self {
+            heap: BinaryHeap::from(snapshot.pending_events),
+            counter: snapshot.counter,
+            cancelled: snapshot.cancelled.into_iter().collect(),
+        }
+    }
 }
 
-pub fn make_event(time: SimTime, kind: EventKind, crew_id: Option<CrewId>, loco_id: Option<LocoId>, segment_id: Option<SegmentId>, priority: u8, id: u64) -> SimEvent {
-    SimEvent { time, kind, crew_id, loco_id, segment_id, priority, id }
+pub fn make_event(
+    time: SimTime,
+    kind: EventKind,
+    crew_id: Option<CrewId>,
+    loco_id: Option<LocoId>,
+    segment_id: Option<SegmentId>,
+    priority: u8,
+    id: u64,
+) -> SimEvent {
+    SimEvent {
+        time,
+        kind,
+        crew_id,
+        loco_id,
+        segment_id,
+        priority,
+        id,
+    }
 }

@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels: [dependencies, rust]
+    target-branch: main
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, github-actions]
+    target-branch: main
+  - package-ecosystem: npm
+    directory: /ts-host
+    schedule:
+      interval: weekly
+    labels: [dependencies, typescript]
+    target-branch: main
+  - package-ecosystem: npm
+    directory: /visualization
+    schedule:
+      interval: weekly
+    labels: [dependencies, visualization]
+    target-branch: main

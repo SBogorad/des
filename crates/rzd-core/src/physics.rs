@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::entities::LocoKind;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainPhysics {
@@ -89,7 +89,11 @@ mod tests {
     fn test_travel_time_basic() {
         let physics = TrainPhysics::default();
         let time = physics.compute_travel_time_min(50.0, 120.0, 1.0);
-        assert!(time > 20.0 && time < 40.0, "Expected 20-40 min, got {}", time);
+        assert!(
+            time > 20.0 && time < 40.0,
+            "Expected 20-40 min, got {}",
+            time
+        );
     }
 
     #[test]
@@ -104,7 +108,11 @@ mod tests {
     fn test_travel_time_short_distance() {
         let physics = TrainPhysics::default();
         let time = physics.compute_travel_time_min(2.0, 120.0, 1.0);
-        assert!(time > 0.5, "Short distance should still take > 0.5 min, got {}", time);
+        assert!(
+            time > 0.5,
+            "Short distance should still take > 0.5 min, got {}",
+            time
+        );
     }
 
     #[test]
@@ -113,7 +121,12 @@ mod tests {
         let diesel = TrainPhysics::for_loco_kind(LocoKind::Diesel, 1);
         let t_e = electric.compute_travel_time_min(100.0, 120.0, 1.0);
         let t_d = diesel.compute_travel_time_min(100.0, 120.0, 1.0);
-        assert!(t_e < t_d, "Electric {} should be faster than diesel {}", t_e, t_d);
+        assert!(
+            t_e < t_d,
+            "Electric {} should be faster than diesel {}",
+            t_e,
+            t_d
+        );
     }
 
     #[test]
@@ -122,6 +135,11 @@ mod tests {
         let double = TrainPhysics::for_loco_kind(LocoKind::Electric, 2);
         let t_s = single.compute_travel_time_min(100.0, 120.0, 1.0);
         let t_d = double.compute_travel_time_min(100.0, 120.0, 1.0);
-        assert!(t_d < t_s, "Double section {} should be faster than single {}", t_d, t_s);
+        assert!(
+            t_d < t_s,
+            "Double section {} should be faster than single {}",
+            t_d,
+            t_s
+        );
     }
 }
