@@ -43,7 +43,7 @@ jobs:
       - run: cargo test -p rzd-wasm --test integration
       - uses: browser-actions/setup-chrome@v1
       - run: cargo install wasm-pack --locked
-      - run: wasm-pack test crates/rzd-wasm --headless --chrome
+      - run: wasm-pack test --headless --chrome crates/rzd-wasm
 
   ts-host:
     runs-on: ubuntu-latest

@@ -669,8 +669,14 @@ mod tests {
         assert_eq!(reparsed.config.loco_count, document.config.loco_count);
         assert_eq!(reparsed.config.seed, document.config.seed);
         assert_eq!(reparsed.config.duration_days, document.config.duration_days);
-        assert_eq!(reparsed.config.allowed_depot_ids, document.config.allowed_depot_ids);
-        assert_eq!(reparsed.config.allowed_leg_ids, document.config.allowed_leg_ids);
+        assert_eq!(
+            reparsed.config.allowed_depot_ids,
+            document.config.allowed_depot_ids
+        );
+        assert_eq!(
+            reparsed.config.allowed_leg_ids,
+            document.config.allowed_leg_ids
+        );
         assert_eq!(
             reparsed.config.night_shift_ratio,
             document.config.night_shift_ratio
