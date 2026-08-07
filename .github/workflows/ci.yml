@@ -51,7 +51,7 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.19.0
       - uses: actions-rust-lang/setup-rust-toolchain@v1
