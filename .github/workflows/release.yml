@@ -43,7 +43,7 @@ jobs:
           sha256sum dist/* > dist/SHA256SUMS
 
       - name: Attest release artifacts
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v3
         with:
           subject-path: dist/*
       - name: Publish GitHub release
