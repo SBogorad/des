@@ -9,8 +9,7 @@ use rzd_core::violations::Severity;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 // UI module
@@ -18,6 +17,38 @@ mod commands;
 use commands::Commands;
 mod ui;
 use ui::ProgressTracker;
+
+/// Sanitize a user-provided output path to prevent directory traversal attacks.
+/// Returns a canonicalized absolute path.
+fn sanitize_output_path(path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    // Reject paths with suspicious components
+    for component in path.components() {
+        if let std::path::Component::ParentDir = component {
+            return Err("Path traversal detected: '..' components are not allowed".into());
+        }
+    }
+    
+    // Convert to absolute path
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    
+    // Canonicalize to resolve any remaining relative components
+    match absolute.canonicalize() {
+        Ok(canonical) => Ok(canonical),
+        Err(_) => {
+            // Path doesn't exist yet; validate parent exists and is accessible
+            if let Some(parent) = absolute.parent() {
+                std::fs::create_dir_all(parent)?;
+                Ok(absolute)
+            } else {
+                Err("Invalid output path: no parent directory".into())
+            }
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "rzd-cli", about = "RZD-DES-ENGINE simulation runner")]
@@ -607,6 +638,8 @@ impl BenchmarkProfile {
         Ok(names)
     }
 }
+
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = commands::parse();
 
@@ -662,8 +695,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if let Some(out_path) = output {
-                std::fs::write(&out_path, &result)?;
-                eprintln!("Written to {}", out_path.display());
+                let safe_path = sanitize_output_path(&out_path)?;
+                std::fs::write(&safe_path, &result)?;
+                eprintln!("Written to {}", safe_path.display());
             } else {
                 println!("{}", result);
             }
@@ -701,8 +735,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let json = serde_json::to_string_pretty(&scenario)?;
 
             if let Some(out_path) = output {
-                std::fs::write(&out_path, &json)?;
-                eprintln!("Written to {}", out_path.display());
+                let safe_path = sanitize_output_path(&out_path)?;
+                std::fs::write(&safe_path, &json)?;
+                eprintln!("Written to {}", safe_path.display());
             } else {
                 println!("{}", json);
             }
@@ -752,8 +787,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let rendered = serde_json::to_string_pretty(&report)?;
             if let Some(out_path) = output {
-                std::fs::write(&out_path, &rendered)?;
-                eprintln!("Written benchmark report to {}", out_path.display());
+                let safe_path = sanitize_output_path(&out_path)?;
+                std::fs::write(&safe_path, &rendered)?;
+                eprintln!("Written benchmark report to {}", safe_path.display());
             } else {
                 println!("{}", rendered);
             }
@@ -864,8 +900,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
             let rendered = serde_json::to_string_pretty(&report)?;
             if let Some(out_path) = output {
-                std::fs::write(&out_path, &rendered)?;
-                eprintln!("Written benchmark suite report to {}", out_path.display());
+                let safe_path = sanitize_output_path(&out_path)?;
+                std::fs::write(&safe_path, &rendered)?;
+                eprintln!("Written benchmark suite report to {}", safe_path.display());
             } else {
                 println!("{}", rendered);
             }
@@ -893,16 +930,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let comparison = build_trace_comparison_report(&baseline_trace, &current_trace)?;
             std::fs::create_dir_all(&output_dir)?;
+            let safe_output_dir = sanitize_output_path(&output_dir)?;
             std::fs::write(
-                output_dir.join("trace_comparison.json"),
+                safe_output_dir.join("trace_comparison.json"),
                 serde_json::to_string_pretty(&comparison)?,
             )?;
             std::fs::write(
-                output_dir.join("trace_comparison.md"),
+                safe_output_dir.join("trace_comparison.md"),
                 build_trace_comparison_markdown(&comparison),
             )?;
             std::fs::write(
-                output_dir.join("trace_comparison.html"),
+                safe_output_dir.join("trace_comparison.html"),
                 build_trace_comparison_html(&comparison),
             )?;
 
@@ -959,23 +997,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &leaderboard,
                 &paths,
             );
-            std::fs::write(paths.root.join("SCALE_PACKET.md"), &scale_packet_md)?;
+            let safe_root = sanitize_output_path(&paths.root)?;
+            std::fs::write(safe_root.join("SCALE_PACKET.md"), &scale_packet_md)?;
             let key_files = vec![
-                build_file_descriptor_from_path(&paths.root, &paths.root.join("SCALE_PACKET.md"))?,
+                build_file_descriptor_from_path(&safe_root, &safe_root.join("SCALE_PACKET.md"))?,
                 build_file_descriptor_from_path(
-                    &paths.root,
+                    &safe_root,
                     &paths.comparison_dir.join("comparison.json"),
                 )?,
                 build_file_descriptor_from_path(
-                    &paths.root,
+                    &safe_root,
                     &paths.leaderboard_dir.join("leaderboard.json"),
                 )?,
                 build_file_descriptor_from_path(
-                    &paths.root,
+                    &safe_root,
                     &paths.competition_bundle_dir.join("manifest.json"),
                 )?,
                 build_file_descriptor_from_path(
-                    &paths.root,
+                    &safe_root,
                     &paths.rzd_scale_bundle_dir.join("manifest.json"),
                 )?,
             ];
@@ -989,20 +1028,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &paths,
             )?;
             std::fs::write(
-                paths.root.join("MANIFEST_SCALE.json"),
+                safe_root.join("MANIFEST_SCALE.json"),
                 serde_json::to_string_pretty(&manifest)?,
             )?;
             let summary_record = build_scale_packet_summary_record(&manifest);
             std::fs::write(
-                paths.root.join("packet_summary.json"),
+                safe_root.join("packet_summary.json"),
                 serde_json::to_string_pretty(&summary_record)?,
             )?;
             std::fs::write(
-                paths.root.join("packet_summary.tsv"),
+                safe_root.join("packet_summary.tsv"),
                 build_scale_packet_summary_tsv(&summary_record),
             )?;
             std::fs::write(
-                paths.root.join("SCALE_PACKET.md"),
+                safe_root.join("SCALE_PACKET.md"),
                 build_scale_packet_readme(
                     &network,
                     &competition,
@@ -1013,7 +1052,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
             )?;
             std::fs::write(
-                paths.root.join("SCALE_PACKET.html"),
+                safe_root.join("SCALE_PACKET.html"),
                 build_scale_packet_html(
                     &network,
                     &manifest,
@@ -1054,10 +1093,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })?;
             engine.run(checkpoint_minute);
             let snapshot = to_canonical_json(&engine.snapshot())?;
-            std::fs::write(&output, snapshot)?;
+            let safe_output = sanitize_output_path(&output)?;
+            std::fs::write(&safe_output, snapshot)?;
             eprintln!(
                 "Checkpoint written to {} at minute {} ({} events, {} shifts)",
-                output.display(),
+                safe_output.display(),
                 checkpoint_minute,
                 engine.stats().total_events_processed,
                 engine.stats().total_shifts_completed
@@ -1088,14 +1128,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let result = render_engine_output(&engine, &format, seed, warmup, duration_days)?;
 
             if let Some(out_path) = output {
-                std::fs::write(&out_path, result)?;
-                eprintln!("Written to {}", out_path.display());
+                let safe_path = sanitize_output_path(&out_path)?;
+                std::fs::write(&safe_path, result)?;
+                eprintln!("Written to {}", safe_path.display());
             } else {
                 println!("{}", result);
             }
 
             if let Some(snapshot_path) = snapshot_output {
-                std::fs::write(snapshot_path, to_canonical_json(&engine.snapshot())?)?;
+                let safe_snapshot = sanitize_output_path(&snapshot_path)?;
+                std::fs::write(safe_snapshot, to_canonical_json(&engine.snapshot())?)?;
             }
 
             eprintln!(
@@ -1235,14 +1277,15 @@ fn write_benchmark_bundle(
 ) -> Result<BenchmarkExecutionArtifacts, Box<dyn std::error::Error>> {
     let execution = run_benchmark_profile_with_artifacts(&network.to_path_buf(), profile)?;
     std::fs::create_dir_all(output_dir)?;
+    let safe_output_dir = sanitize_output_path(output_dir)?;
 
     let report_json =
         serde_json::to_string_pretty(&build_benchmark_report_json(&execution.result, network))?;
-    let report_path = output_dir.join("report.json");
-    let tu3_path = output_dir.join("tu3.tsv");
-    let ced_path = output_dir.join("ced.json");
-    let violations_path = output_dir.join("violations.ndjson");
-    let event_trace_path = output_dir.join("event_trace.ndjson");
+    let report_path = safe_output_dir.join("report.json");
+    let tu3_path = safe_output_dir.join("tu3.tsv");
+    let ced_path = safe_output_dir.join("ced.json");
+    let violations_path = safe_output_dir.join("violations.ndjson");
+    let event_trace_path = safe_output_dir.join("event_trace.ndjson");
 
     std::fs::write(&report_path, &report_json)?;
     std::fs::write(&tu3_path, &execution.tu3_tsv)?;
@@ -1263,23 +1306,23 @@ fn write_benchmark_bundle(
         ],
     };
     let manifest_json = serde_json::to_string_pretty(&manifest)?;
-    std::fs::write(output_dir.join("manifest.json"), &manifest_json)?;
+    std::fs::write(safe_output_dir.join("manifest.json"), &manifest_json)?;
     std::fs::write(
-        output_dir.join("SUMMARY.md"),
+        safe_output_dir.join("SUMMARY.md"),
         build_bundle_summary_markdown(BenchmarkBundleSummaryContext {
             manifest: &manifest,
             result: &execution.result,
         }),
     )?;
     std::fs::write(
-        output_dir.join("report.html"),
+        safe_output_dir.join("report.html"),
         build_bundle_report_html(BenchmarkBundleSummaryContext {
             manifest: &manifest,
             result: &execution.result,
         }),
     )?;
     std::fs::write(
-        output_dir.join("JUDGING_PACKET.md"),
+        safe_output_dir.join("JUDGING_PACKET.md"),
         build_judging_packet_markdown(BenchmarkBundleSummaryContext {
             manifest: &manifest,
             result: &execution.result,
@@ -1313,16 +1356,17 @@ fn write_bundle_comparison(
         &current_manifest,
     );
     std::fs::create_dir_all(output_dir)?;
+    let safe_output_dir = sanitize_output_path(output_dir)?;
     std::fs::write(
-        output_dir.join("comparison.json"),
+        safe_output_dir.join("comparison.json"),
         serde_json::to_string_pretty(&comparison)?,
     )?;
     std::fs::write(
-        output_dir.join("comparison.md"),
+        safe_output_dir.join("comparison.md"),
         build_bundle_comparison_markdown(&comparison),
     )?;
     std::fs::write(
-        output_dir.join("comparison.html"),
+        safe_output_dir.join("comparison.html"),
         build_bundle_comparison_html(&comparison),
     )?;
     Ok(comparison)
@@ -1341,16 +1385,17 @@ fn write_comparison_leaderboard(
     }
     let leaderboard = build_comparison_leaderboard(&comparisons);
     std::fs::create_dir_all(output_dir)?;
+    let safe_output_dir = sanitize_output_path(output_dir)?;
     std::fs::write(
-        output_dir.join("leaderboard.json"),
+        safe_output_dir.join("leaderboard.json"),
         serde_json::to_string_pretty(&leaderboard)?,
     )?;
     std::fs::write(
-        output_dir.join("leaderboard.md"),
+        safe_output_dir.join("leaderboard.md"),
         build_leaderboard_markdown(&leaderboard),
     )?;
     std::fs::write(
-        output_dir.join("leaderboard.html"),
+        safe_output_dir.join("leaderboard.html"),
         build_leaderboard_html(&leaderboard),
     )?;
     Ok(leaderboard)
